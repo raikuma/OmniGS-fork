@@ -6,7 +6,7 @@ We will release the source code at once after the paper is accepted.
 ### [Homepage](https://liquorleaf.github.io/research/OmniGS/) | [Paper](https://arxiv.org/abs/2404.03202)
 
 **OmniGS: Omnidirectional Gaussian Splatting for Fast Radiance Field Reconstruction using Omnidirectional Images** <br>
-[Longwei Li](https://github.com/liquorleaf)<sup>1</sup>, [Huajian Huang](https://huajianup.github.io)<sup>2</sup>, [Sai-Kit Yeung](https://saikit.org/)<sup>2</sup>, and Hui Cheng<sup>1</sup> <br>
+[Longwei Li](https://github.com/liquorleaf)<sup>1</sup>
 Sun Yat-Sen University<sup>1</sup>, The Hong Kong University of Science and Technology<sup>2</sup> <br>
 Submission of IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2024
 
