@@ -7,6 +7,7 @@ We will release the source code at once after the paper is accepted.
 
 **OmniGS: Omnidirectional Gaussian Splatting for Fast Radiance Field Reconstruction using Omnidirectional Images** <br>
 [Longwei Li](https://github.com/liquorleaf)<sup>1</sup>
+
 Sun Yat-Sen University<sup>1</sup>
 Submission of IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2024
 
