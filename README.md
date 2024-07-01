@@ -1,4 +1,8 @@
 # OmniGS
+
+## TBA
+We will release the source code at once after the paper is accepted.
+
 ### [Homepage](https://liquorleaf.github.io/research/OmniGS/) | [Paper](https://arxiv.org/abs/2404.03202)
 
 **OmniGS: Omnidirectional Gaussian Splatting for Fast Radiance Field Reconstruction using Omnidirectional Images** <br>
