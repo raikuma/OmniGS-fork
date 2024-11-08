@@ -92,3 +92,6 @@ Change all `dataset_dir` in `scripts/360roam_run.py` and `scripts/egonerf_run.py
 
 :exclamation: Though OmniGS has the option to train and test perspective images, there exists some unknown bug for this function (see [Photo-SLAM #24](https://github.com/HuajianUP/Photo-SLAM/issues/24)). So we used [the original 3DGS](https://github.com/graphdeco-inria/gaussian-splatting) as the perspective
  baseline in our paper.
+
+### View the result
+Need the absolute path of result .ply files. See `scripts/view_lonlat.sh` for example.
