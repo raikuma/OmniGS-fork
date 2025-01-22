@@ -32,8 +32,8 @@ __device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const 
 	// The implementation is loosely based on code for 
 	// "Differentiable Point-Based Radiance Fields for 
 	// Efficient View Synthesis" by Zhang et al. (2022)
-	glm::vec3 pos = means[idx]; // 世界坐标
-	glm::vec3 dir = pos - campos; // 世界坐标下相对相机的方向向量
+	glm::vec3 pos = means[idx]; // world coordinate
+	glm::vec3 dir = pos - campos; // Orientation vector relative to the camera in world coordinates
 	dir = dir / glm::length(dir);
 
 	glm::vec3* sh = ((glm::vec3*)shs) + idx * max_coeffs;
@@ -41,7 +41,7 @@ __device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const 
 
 	if (deg > 0)
 	{
-		// active_sh_degree到1时坐标就参与颜色计算了，等级越高坐标的阶次越高
+		// active_sh_degree to 1 when the coordinates are involved in the color calculation, the higher the level the higher the order of coordinates
 		float x = dir.x;
 		float y = dir.y;
 		float z = dir.z;
@@ -75,7 +75,7 @@ __device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const 
 
 	// RGB colors are clamped to positive values. If values are
 	// clamped, we need to keep track of this for the backward pass.
-	// 结果颜色clamp到非负。记录这一操作并告知梯度计算
+	// The resultant color clamped to non-negative. Record this operation and tell the gradient calculation
 	clamped[3 * idx + 0] = (result.x < 0);
 	clamped[3 * idx + 1] = (result.y < 0);
 	clamped[3 * idx + 2] = (result.z < 0);
@@ -91,7 +91,7 @@ __device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y,
 	// Transposes used to account for row-/column-major conventions.
 	float3 t = transformPoint4x3(mean, viewmatrix);
 
-	// t是相机坐标，在perspective下有限制，在panoramic下不应有/或只裁掉近点
+	// t is the camera coordinate, there is a limit under perspective, under panoramic there shouldn't be/or only near points cropped out
 	const float limx = 1.3f * tan_fovx;
 	const float limy = 1.3f * tan_fovy;
 	const float txtz = t.x / t.z;
@@ -99,7 +99,7 @@ __device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y,
 	t.x = min(limx, max(-limx, txtz)) * t.z;
 	t.y = min(limy, max(-limy, tytz)) * t.z;
 
-	// 相机坐标到像素坐标的雅可比
+	// Jacobi from camera coordinates to pixel coordinates
 	glm::mat3 J = glm::mat3(
 		focal_x / t.z, 0.0f, -(focal_x * t.x) / (t.z * t.z),
 		0.0f, focal_y / t.z, -(focal_y * t.y) / (t.z * t.z),
@@ -135,7 +135,7 @@ __device__ float3 computeCov2DLonlat(const float3& mean, const int width, const 
 	// Transposes used to account for row-/column-major conventions.
 	float3 t = transformPoint4x3(mean, viewmatrix);
 
-	// 【相机模型】t是相机坐标，在perspective下有限制，在panoramic下不应有/或只裁掉近点
+	// [Camera model] t is the camera coordinate, there is a limitation in perspective, in panoramic there should not be/or only crop off the near point.
 	// const float limx = 1.3f * tan_fovx;
 	// const float limy = 1.3f * tan_fovy;
 	// const float txtz = t.x / t.z;
@@ -143,7 +143,7 @@ __device__ float3 computeCov2DLonlat(const float3& mean, const int width, const 
 	// t.x = min(limx, max(-limx, txtz)) * t.z;
 	// t.y = min(limy, max(-limy, tytz)) * t.z;
 
-	// 【相机模型】相机坐标到像素坐标的雅可比
+	// [Camera Model] Camera Coordinate to Pixel Coordinate Jacobi
 	float trxztrxz = t.x * t.x + t.z * t.z;
 	float trxztrxz_inv = 1.0f / (trxztrxz + 0.0000001f);
 	float trxz = sqrtf(trxztrxz);
@@ -229,13 +229,13 @@ __device__ void computeCov3D(const glm::vec3 scale, float mod, const glm::vec4 r
 
 // Perform initial steps for each Gaussian prior to rasterization.
 template<int C>
-__global__ void preprocessCUDA(int P/*3D Gaus数目*/, int D/*active_sh_degree_，值域{0,1,2,3}*/, int M/*dc和rest谐波之和(1+15)*/,
+__global__ void preprocessCUDA(int P/*3D Gaus number*/, int D/*active_sh_degree_, range{0,1,2,3}*/, int M/*Sum of dc and rest harmonics (1+15)*/,
 	const float* orig_points,
 	const glm::vec3* scales,
 	const float scale_modifier,
 	const glm::vec4* rotations,
 	const float* opacities,
-	const float* shs, /*features_dc和features_rest*/
+	const float* shs, /*features_dc and features_rest*/
 	bool* clamped,
 	const float* cov3D_precomp,
 	const float* colors_precomp,
@@ -255,19 +255,19 @@ __global__ void preprocessCUDA(int P/*3D Gaus数目*/, int D/*active_sh_degree_�
 	uint32_t* tiles_touched,
 	bool prefiltered)
 {
-	// preprocessCUDA对每个3D Gaus进行预处理
+	// preprocessCUDA preprocesses each 3D Gaus
 	auto idx = cg::this_grid().thread_rank();
 	if (idx >= P)
 		return;
 
 	// Initialize radius and touched tiles to 0. If this isn't changed,
 	// this Gaussian will not be processed further.
-	// 统计Gaus的半径和覆盖tile数，预处理之后若仍为零，则其不参与渲染处理
+	// Count the radius and the number of covered tiles of Gaus, if it is still zero after preprocessing, then it is not involved in the rendering process
 	radii[idx] = 0;
 	tiles_touched[idx] = 0;
 
 	// Perform near culling, quit if outside.
-	// 剔除不可视点；实际上只剔除了相机坐标下z<=0.2的点，即前方的点，不涉及相机模型
+	// Elimination of invisible points; in fact, only points with z<=0.2 in camera coordinates, i.e., points in front of the camera, are eliminated, not involving the camera model
 	float3 p_view;
 	if (!in_frustum(idx, orig_points, viewmatrix, projmatrix, prefiltered, p_view))
 		return;
@@ -276,11 +276,11 @@ __global__ void preprocessCUDA(int P/*3D Gaus数目*/, int D/*active_sh_degree_�
 	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
 	float4 p_hom = transformPoint4x4(p_orig, projmatrix);
 	float p_w = 1.0f / (p_hom.w + 0.0000001f);
-	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w }; // screen-space的坐标
+	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w }; // screen-space coordiante
 
 	// If 3D covariance matrix is precomputed, use it, otherwise compute
 	// from scaling and rotation parameters. 
-	// 一般没有precompute的cov3D，传入是nullptr，因此使用scale和rot计算3D协方差
+	// Generally there is no precompute cov3D, the input is nullptr, so scale and rot are used to compute the 3D covariance
 	const float* cov3D;
 	if (cov3D_precomp != nullptr)
 	{
@@ -293,11 +293,11 @@ __global__ void preprocessCUDA(int P/*3D Gaus数目*/, int D/*active_sh_degree_�
 	}
 
 	// Compute 2D screen-space covariance matrix
-	// 计算投影到2D screen-space的协方差
+	// Compute the covariance of the projection to 2D screen-space
 	float3 cov = computeCov2D(p_orig, focal_x, focal_y, tan_fovx, tan_fovy, cov3D, viewmatrix);
 
 	// Invert covariance (EWA algorithm)
-	// 求conic：2D协方差的逆矩阵
+	// Finding the inverse matrix of conic:2D covariance
 	float det = (cov.x * cov.z - cov.y * cov.y);
 	if (det == 0.0f)
 		return;
@@ -308,7 +308,7 @@ __global__ void preprocessCUDA(int P/*3D Gaus数目*/, int D/*active_sh_degree_�
 	// 2D covariance matrix). Use extent to compute a bounding rectangle
 	// of screen-space tiles that this Gaussian overlaps with. Quit if
 	// rectangle covers 0 tiles. 
-	// 计算2D协方差的特征值->计算Gaus的半径->计算Gaus的范围框
+	// Calculate the eigenvalues of the 2D covariance -> Calculate the radius of Gaus -> Calculate the range box of Gaus
 	float mid = 0.5f * (cov.x + cov.z);
 	float lambda1 = mid + sqrt(max(0.1f, mid * mid - det));
 	float lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
@@ -321,7 +321,7 @@ __global__ void preprocessCUDA(int P/*3D Gaus数目*/, int D/*active_sh_degree_�
 
 	// If colors have been precomputed, use them, otherwise convert
 	// spherical harmonics coefficients to RGB color.
-	// 着色：SH转RGB
+	// Coloring: SH to RGB
 	if (colors_precomp == nullptr)
 	{
 		glm::vec3 result = computeColorFromSH(idx, D, M, (glm::vec3*)orig_points, *cam_pos, shs, clamped);
@@ -331,18 +331,18 @@ __global__ void preprocessCUDA(int P/*3D Gaus数目*/, int D/*active_sh_degree_�
 	}
 
 	// Store some useful helper data for the next steps.
-	depths[idx] = p_view.z; // 相机坐标 深度
-	radii[idx] = my_radius; // 图像空间 半径
-	points_xy_image[idx] = point_image; // 图像空间 像素坐标
+	depths[idx] = p_view.z; // Camera coordinates Depth
+	radii[idx] = my_radius; // Image Space Radius
+	points_xy_image[idx] = point_image; // Image Space Pixel coordinates
 	// Inverse 2D covariance and opacity neatly pack into one float4
-	conic_opacity[idx] = { conic.x, conic.y, conic.z, opacities[idx] }; // 协方差、透明度 打包
-	tiles_touched[idx] = (rect_max.y - rect_min.y) * (rect_max.x - rect_min.x); // 用方框粗略估计的覆盖tile数
+	conic_opacity[idx] = { conic.x, conic.y, conic.z, opacities[idx] }; // packing covariance and opacity
+	tiles_touched[idx] = (rect_max.y - rect_min.y) * (rect_max.x - rect_min.x); // Roughly estimated number of covered tiles using boxes
 }
 
 // Main rasterization method. Collaboratively works on one tile per
 // block, each thread treats one pixel. Alternates between fetching 
 // and rasterizing data.
-// 每个thread处理一个像素，同一个tile内的像素thread在同一个block（线程块，GPU的feature）里
+// Each thread handles one pixel, and pixel threads within the same tile are in the same block (thread block, GPU's feature)
 template <uint32_t CHANNELS>
 __global__ void __launch_bounds__(/*maxThreadsPerBlock=*/BLOCK_X * BLOCK_Y)
 renderCUDA(
@@ -358,62 +358,62 @@ renderCUDA(
 	float* __restrict__ out_color)
 {
 	// Identify current tile and associated min/max pixel range.
-	auto block = cg::this_thread_block(); // 当前block即当前tile
-	uint32_t horizontal_blocks = (W + BLOCK_X - 1) / BLOCK_X; // 水平方向上block总数（tile总数，=tile_grid.x）
-	uint2 pix_min = { block.group_index().x * BLOCK_X, block.group_index().y * BLOCK_Y }; // 当前tile最靠近原点的像素坐标
-	uint2 pix_max = { min(pix_min.x + BLOCK_X, W), min(pix_min.y + BLOCK_Y , H) };        // 当前tile最远离原点的像素坐标
-	uint2 pix = { pix_min.x + block.thread_index().x, pix_min.y + block.thread_index().y }; // 当前像素坐标 = 最靠近原点像素 + block.thread_index（二维）
-	uint32_t pix_id = W * pix.y + pix.x; // 当前像素的总序号（图像铺开到一维时像素的序号，先行后列）
-	float2 pixf = { (float)pix.x, (float)pix.y };  // 当前像素坐标
+	auto block = cg::this_thread_block(); // The current block is the current tile
+	uint32_t horizontal_blocks = (W + BLOCK_X - 1) / BLOCK_X; // Total number of blocks horizontally (total number of tiles, = tile_grid.x)
+	uint2 pix_min = { block.group_index().x * BLOCK_X, block.group_index().y * BLOCK_Y }; // Coordinates of the pixel closest to the origin of the current tile
+	uint2 pix_max = { min(pix_min.x + BLOCK_X, W), min(pix_min.y + BLOCK_Y , H) };        // Coordinates of the pixel furthest from the origin of the current tile
+	uint2 pix = { pix_min.x + block.thread_index().x, pix_min.y + block.thread_index().y }; // Current pixel coordinate = nearest origin pixel + block.thread_index (2D)
+	uint32_t pix_id = W * pix.y + pix.x; // Total serial number of the current pixel (the serial number of the pixel when the image is spread to one dimension, first in line and then in column)
+	float2 pixf = { (float)pix.x, (float)pix.y };  // Current pixel coordinates
 
-	// 图像外的像素为invalid，直接done=true，不参与重采样、不累积alpha，但参与协作从全局获取Gaus数据到block
+	// Pixels outside the image are invalid, directly done=true, not involved in resampling, not accumulating alpha, but involved in collaborating to get Gaus data from the global to the block
 	// Check if this thread is associated with a valid pixel or outside.
 	bool inside = pix.x < W&& pix.y < H;
 	// Done threads can help with fetching, but don't rasterize
 	bool done = !inside;
 
 	// Load start/end range of IDs to process in bit sorted list.
-	uint2 range = ranges[block.group_index().y * horizontal_blocks + block.group_index().x]; // 之前预计算的当前tile的instance序号范围
-	const int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE); // 将当前tile的instance分为BLOCK_SIZE（=每个tile最大像素数）个一组来处理
-	int toDo = range.y - range.x; // 当前像素还未用于渲染的instance数，初始等于当前tile用于渲染的instance总数
+	uint2 range = ranges[block.group_index().y * horizontal_blocks + block.group_index().x]; // The range of instance numbers for the current tile that were previously precomputed.
+	const int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE); // Divide the instances of the current tile into BLOCK_SIZE (= maximum number of pixels per tile) groups for processing
+	int toDo = range.y - range.x; // The number of instances of the current pixel that have not yet been used for rendering, initially equal to the total number of instances of the current tile used for rendering
 
 	// Allocate storage for batches of collectively fetched data.
-	// 用于一个tile内所有像素存放取得的Gaus数据。数组长度 = maxThreadsPerBlock
-	// 共享内存是按线程块分配的，因此块中的所有线程都可以访问同一共享内存 https://developer.nvidia.com/zh-cn/blog/using-shared-memory-cuda-cc/
+	// Used to store the obtained Gaus data for all pixels within a tile. Array length = maxThreadsPerBlock
+	// Shared memory is allocated in thread blocks, so all threads in a block can access the same shared memory https://developer.nvidia.com/zh-cn/blog/using-shared-memory-cuda-cc/
 	__shared__ int collected_id[BLOCK_SIZE];
 	__shared__ float2 collected_xy[BLOCK_SIZE];
 	__shared__ float4 collected_conic_opacity[BLOCK_SIZE];
 
 	// Initialize helper variables
-	float T = 1.0f; // 论文(2)透射比
-	uint32_t contributor = 0; // 计数器：参与构成当前像素的Gaus instance数（当实际上continue跳过了一个instance但没有done时，也会计数）
-	uint32_t last_contributor = 0; // 辅助记录，最后一个实际参与构成当前像素（没有跳过）的instance是该像素所有instance中的第几个
-	float C[CHANNELS] = { 0 }; // 辅助记录，当前像素的累积颜色
+	float T = 1.0f; // Paper (2) Transmission Ratio
+	uint32_t contributor = 0; // Counter: number of Gaus instances involved in composing the current pixel (also counts when actually continue skips an instance but doesn't DONE)
+	uint32_t last_contributor = 0; // Auxiliary record, the last instance actually involved in composing the current pixel (not skipped) is the first of all instances for that pixel
+	float C[CHANNELS] = { 0 }; // Auxiliary record, cumulative color of current pixel
 
 	// Iterate over batches until all done or range is complete
 	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
 	{
 		// End if entire block votes that it is done rasterizing
-		// __syncthreads_count统计block内done为true的线程总数，所有像素都done之后，该block的所有线程一起break退出
-		// 所有像素done之前，已经done的像素仍参与共享数据获取，但自己不再新增contributor，颜色不再改变
+		// __syncthreads_count counts the total number of threads in the block that are true when all pixels are done, then all threads in the block break together.
+		// Before all pixels are done, the pixels that are already done still participate in the shared data fetch, but they don't add a new contributor and their color doesn't change.
 		int num_done = __syncthreads_count(done);
 		if (num_done == BLOCK_SIZE)
 			break;
 
 		// Collectively fetch per-Gaussian data from global to shared
-		// 一轮中，即对同一个i，整个block共同并行取出最多BLOCK_SIZE个instance，block内每个thread取1个，同步：等到这些instance都取好
-		int progress = i * BLOCK_SIZE + block.thread_rank(); // 是当前block内的第几个instance
-		if (range.x + progress < range.y) // range.x + progress = 是总的第几个instance，只有当前tile范围内的会取出
+		// In one round, i.e., for the same i, the whole block takes out up to BLOCK_SIZE instances in parallel, 1 for each thread in the block, synchronization: wait until all these instances are taken.
+		int progress = i * BLOCK_SIZE + block.thread_rank(); // the rank of instance in current block
+		if (range.x + progress < range.y) // range.x + progress = the rank in all instances, only the ones in the current tile range will be taken out
 		{
-			int coll_id = point_list[range.x + progress]; // instance对应的Gaus的id
+			int coll_id = point_list[range.x + progress]; // The id of the Gaus corresponding to instance
 			collected_id[block.thread_rank()] = coll_id;
-			collected_xy[block.thread_rank()] = points_xy_image[coll_id]; // instance对应的Gaus的像素坐标
-			collected_conic_opacity[block.thread_rank()] = conic_opacity[coll_id]; // instance对应的Gaus的协方差、透明度
+			collected_xy[block.thread_rank()] = points_xy_image[coll_id]; // The pixel coordinates of the instance's corresponding Gaus
+			collected_conic_opacity[block.thread_rank()] = conic_opacity[coll_id]; // instance corresponds to the covariance of Gaus, transparency
 		}
 		block.sync();
 
 		// Iterate over current batch
-		// 一轮中，即对同一个i，每个像素分别利用刚刚取出的最多BLOCK_SIZE个instance累积自身的渲染结果颜色
+		// In one round, i.e., for the same i, each pixel accumulates its own rendering result color using at most BLOCK_SIZE instances just taken out respectively
 		for (int j = 0; !done && j < min(BLOCK_SIZE, toDo); j++)
 		{
 			// Keep track of current position in range
@@ -424,20 +424,20 @@ renderCUDA(
 			float2 xy = collected_xy[j];
 			float2 d = { xy.x - pixf.x, xy.y - pixf.y };
 			float4 con_o = collected_conic_opacity[j]; // {x=conic[0][0], y=conic[0][1], z=conic[1][1], w=opacity}
-			float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y; // 指数项，定义参考EWA splatting (20)
-			if (power > 0.0f) // 数值稳健性：一个Gaus分布函数的指数不应该大于0
+			float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y; // Exponential term, defined with reference to EWA splatting (20)
+			if (power > 0.0f) // Numerical robustness: the exponent of a Gaus distribution function should not be greater than 0
 				continue;
 
 			// Eq. (2) from 3D Gaussian splatting paper.
 			// Obtain alpha by multiplying with Gaussian opacity
 			// and its exponential falloff from mean.
 			// Avoid numerical instabilities (see paper appendix). 
-			// 这里的alpha不是用(2)式中的变量定义的，而是直接定义为sigmoid激活后的opacity属性 * Gaus分布取值
-			float alpha = min(0.99f, con_o.w * exp(power)); // 数值稳健性1：防除以0，大alpha clamp到0.99
-			if (alpha < 1.0f / 255.0f) // 数值稳健性2：防除以0，跳过小alpha
+			// Here alpha is not defined in terms of the variables in equation (2), but is directly defined as the opacity property after sigmoid activation * Gaus distribution sample
+			float alpha = min(0.99f, con_o.w * exp(power)); // Numerical Robustness 1: preventing division by 0, large alpha clamp to 0.99
+			if (alpha < 1.0f / 255.0f) // Numerical robustness 2: preventing division by 0, skipping small alpha
 				continue;
 			float test_T = T * (1 - alpha);
-			if (test_T < 0.0001f) // 数值稳健性3：alpha累积停在0.9999时而非1，即 新T<1-0.9999 时
+			if (test_T < 0.0001f) // Numerical robustness 3: alpha accumulation stops at 0.9999 instead of 1, i.e., when new T<1-0.9999
 			{
 				done = true;
 				continue;
@@ -447,7 +447,7 @@ renderCUDA(
 			for (int ch = 0; ch < CHANNELS; ch++)
 				C[ch] += features[collected_id[j] * CHANNELS + ch] * alpha * T;
 
-			T = test_T; // 累乘T
+			T = test_T; // Cumulative multiplication T
 
 			// Keep track of last range entry to update this
 			// pixel.
@@ -462,14 +462,13 @@ renderCUDA(
 		final_T[pix_id] = T;
 		n_contrib[pix_id] = last_contributor;
 		for (int ch = 0; ch < CHANNELS; ch++)
-			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch]; // 背景色也是等效为一个混合项累加到式(3)上去的
+			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch]; // The background color is also equivalent to a mixing term accrued to equation (3)
 	}
 }
 
 // Main rasterization method. Collaboratively works on one tile per
 // block, each thread treats one pixel. Alternates between fetching 
 // and rasterizing data.
-// 每个thread处理一个像素，同一个tile内的像素thread在同一个block（线程块，GPU的feature）里
 template <uint32_t CHANNELS>
 __global__ void __launch_bounds__(/*maxThreadsPerBlock=*/BLOCK_X * BLOCK_Y)
 renderDepthCUDA(
@@ -487,62 +486,55 @@ renderDepthCUDA(
 	float* __restrict__ out_color)
 {
 	// Identify current tile and associated min/max pixel range.
-	auto block = cg::this_thread_block(); // 当前block即当前tile
-	uint32_t horizontal_blocks = (W + BLOCK_X - 1) / BLOCK_X; // 水平方向上block总数（tile总数，=tile_grid.x）
-	uint2 pix_min = { block.group_index().x * BLOCK_X, block.group_index().y * BLOCK_Y }; // 当前tile最靠近原点的像素坐标
-	uint2 pix_max = { min(pix_min.x + BLOCK_X, W), min(pix_min.y + BLOCK_Y , H) };        // 当前tile最远离原点的像素坐标
-	uint2 pix = { pix_min.x + block.thread_index().x, pix_min.y + block.thread_index().y }; // 当前像素坐标 = 最靠近原点像素 + block.thread_index（二维）
-	uint32_t pix_id = W * pix.y + pix.x; // 当前像素的总序号（图像铺开到一维时像素的序号，先行后列）
-	float2 pixf = { (float)pix.x, (float)pix.y };  // 当前像素坐标
+	auto block = cg::this_thread_block();
+	uint32_t horizontal_blocks = (W + BLOCK_X - 1) / BLOCK_X;
+	uint2 pix_min = { block.group_index().x * BLOCK_X, block.group_index().y * BLOCK_Y };
+	uint2 pix_max = { min(pix_min.x + BLOCK_X, W), min(pix_min.y + BLOCK_Y , H) };
+	uint2 pix = { pix_min.x + block.thread_index().x, pix_min.y + block.thread_index().y };
+	uint32_t pix_id = W * pix.y + pix.x;
+	float2 pixf = { (float)pix.x, (float)pix.y };
 
-	// 图像外的像素为invalid，直接done=true，不参与重采样、不累积alpha，但参与协作从全局获取Gaus数据到block
 	// Check if this thread is associated with a valid pixel or outside.
 	bool inside = pix.x < W&& pix.y < H;
 	// Done threads can help with fetching, but don't rasterize
 	bool done = !inside;
 
 	// Load start/end range of IDs to process in bit sorted list.
-	uint2 range = ranges[block.group_index().y * horizontal_blocks + block.group_index().x]; // 之前预计算的当前tile的instance序号范围
-	const int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE); // 将当前tile的instance分为BLOCK_SIZE（=每个tile最大像素数）个一组来处理
-	int toDo = range.y - range.x; // 当前像素还未用于渲染的instance数，初始等于当前tile用于渲染的instance总数
+	uint2 range = ranges[block.group_index().y * horizontal_blocks + block.group_index().x];
+	const int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE); 
+	int toDo = range.y - range.x;
 
 	// Allocate storage for batches of collectively fetched data.
-	// 用于一个tile内所有像素存放取得的Gaus数据。数组长度 = maxThreadsPerBlock
-	// 共享内存是按线程块分配的，因此块中的所有线程都可以访问同一共享内存 https://developer.nvidia.com/zh-cn/blog/using-shared-memory-cuda-cc/
 	__shared__ int collected_id[BLOCK_SIZE];
 	__shared__ float2 collected_xy[BLOCK_SIZE];
 	__shared__ float4 collected_conic_opacity[BLOCK_SIZE];
 
 	// Initialize helper variables
-	float T = 1.0f; // 论文(2)透射比
-	uint32_t contributor = 0; // 计数器：参与构成当前像素的Gaus instance数（当实际上continue跳过了一个instance但没有done时，也会计数）
-	uint32_t last_contributor = 0; // 辅助记录，最后一个实际参与构成当前像素（没有跳过）的instance是该像素所有instance中的第几个
-	float C[CHANNELS] = { 0 }; // 辅助记录，当前像素的累积颜色
+	float T = 1.0f;
+	uint32_t contributor = 0;
+	uint32_t last_contributor = 0;
+	float C[CHANNELS] = { 0 };
 
 	// Iterate over batches until all done or range is complete
 	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
 	{
 		// End if entire block votes that it is done rasterizing
-		// __syncthreads_count统计block内done为true的线程总数，所有像素都done之后，该block的所有线程一起break退出
-		// 所有像素done之前，已经done的像素仍参与共享数据获取，但自己不再新增contributor，颜色不再改变
 		int num_done = __syncthreads_count(done);
 		if (num_done == BLOCK_SIZE)
 			break;
 
 		// Collectively fetch per-Gaussian data from global to shared
-		// 一轮中，即对同一个i，整个block共同并行取出最多BLOCK_SIZE个instance，block内每个thread取1个，同步：等到这些instance都取好
-		int progress = i * BLOCK_SIZE + block.thread_rank(); // 是当前block内的第几个instance
-		if (range.x + progress < range.y) // range.x + progress = 是总的第几个instance，只有当前tile范围内的会取出
+		int progress = i * BLOCK_SIZE + block.thread_rank();
+		if (range.x + progress < range.y)
 		{
-			int coll_id = point_list[range.x + progress]; // instance对应的Gaus的id
+			int coll_id = point_list[range.x + progress];
 			collected_id[block.thread_rank()] = coll_id;
-			collected_xy[block.thread_rank()] = points_xy_image[coll_id]; // instance对应的Gaus的像素坐标
-			collected_conic_opacity[block.thread_rank()] = conic_opacity[coll_id]; // instance对应的Gaus的协方差、透明度
+			collected_xy[block.thread_rank()] = points_xy_image[coll_id];
+			collected_conic_opacity[block.thread_rank()] = conic_opacity[coll_id];
 		}
 		block.sync();
 
 		// Iterate over current batch
-		// 一轮中，即对同一个i，每个像素分别利用刚刚取出的最多BLOCK_SIZE个instance累积自身的渲染结果颜色
 		for (int j = 0; !done && j < min(BLOCK_SIZE, toDo); j++)
 		{
 			// Keep track of current position in range
@@ -553,20 +545,19 @@ renderDepthCUDA(
 			float2 xy = collected_xy[j];
 			float2 d = { xy.x - pixf.x, xy.y - pixf.y };
 			float4 con_o = collected_conic_opacity[j]; // {x=conic[0][0], y=conic[0][1], z=conic[1][1], w=opacity}
-			float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y; // 指数项，定义参考EWA splatting (20)
-			if (power > 0.0f) // 数值稳健性：一个Gaus分布函数的指数不应该大于0
+			float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
+			if (power > 0.0f)
 				continue;
 
 			// Eq. (2) from 3D Gaussian splatting paper.
 			// Obtain alpha by multiplying with Gaussian opacity
 			// and its exponential falloff from mean.
 			// Avoid numerical instabilities (see paper appendix). 
-			// 这里的alpha不是用(2)式中的变量定义的，而是直接定义为sigmoid激活后的opacity属性 * Gaus分布取值
-			float alpha = min(0.99f, con_o.w * exp(power)); // 数值稳健性1：防除以0，大alpha clamp到0.99
-			if (alpha < 1.0f / 255.0f) // 数值稳健性2：防除以0，跳过小alpha
+			float alpha = min(0.99f, con_o.w * exp(power));
+			if (alpha < 1.0f / 255.0f)
 				continue;
 			float test_T = T * (1 - alpha);
-			if (test_T < 0.0001f) // 数值稳健性3：alpha累积停在0.9999时而非1，即 新T<1-0.9999 时
+			if (test_T < 0.0001f)
 			{
 				done = true;
 				continue;
@@ -579,7 +570,7 @@ renderDepthCUDA(
 			for (int ch = 0; ch < CHANNELS; ch++)
 				C[ch] += depths[collected_id[j]] * alpha * T;
 
-			T = test_T; // 累乘T
+			T = test_T;
 
 			// Keep track of last range entry to update this
 			// pixel.
@@ -594,19 +585,19 @@ renderDepthCUDA(
 		final_T[pix_id] = T;
 		n_contrib[pix_id] = last_contributor;
 		for (int ch = 0; ch < CHANNELS; ch++)
-			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch]; // 背景色也是等效为一个混合项累加到式(3)上去的
+			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
 	}
 }
 
 // Perform initial steps for each Gaussian prior to rasterization.
 template<int C>
-__global__ void preprocessLonlatCUDA(int P/*3D Gaus数目*/, int D/*active_sh_degree_，值域{0,1,2,3}*/, int M/*dc和rest谐波之和(1+15)*/,
+__global__ void preprocessLonlatCUDA(int P/*3D Gaus number*/, int D/*active_sh_degree_, range{0,1,2,3}*/, int M/*Sum of dc and rest harmonics (1+15)*/,
 	const float* orig_points,
 	const glm::vec3* scales,
 	const float scale_modifier,
 	const glm::vec4* rotations,
 	const float* opacities,
-	const float* shs, /*features_dc和features_rest*/
+	const float* shs, /*features_dc and features_rest*/
 	bool* clamped,
 	const float* cov3D_precomp,
 	const float* colors_precomp,
@@ -624,31 +615,31 @@ __global__ void preprocessLonlatCUDA(int P/*3D Gaus数目*/, int D/*active_sh_de
 	uint32_t* tiles_touched,
 	bool prefiltered)
 {
-	// preprocessCUDA对每个3D Gaus进行预处理
+	// preprocessCUDA preprocesses each 3D Gaus
 	auto idx = cg::this_grid().thread_rank();
 	if (idx >= P)
 		return;
 
 	// Initialize radius and touched tiles to 0. If this isn't changed,
 	// this Gaussian will not be processed further.
-	// 统计Gaus的半径和覆盖tile数，预处理之后若仍为零，则其不参与渲染处理
+	// Count the radius and the number of covered tiles of Gaus, if it is still zero after preprocessing, then it is not involved in the rendering process
 	radii[idx] = 0;
 	tiles_touched[idx] = 0;
 
 	// Perform near culling, quit if outside.
-	// 剔除不可视点；实际上只剔除了相机坐标下r<=0.2的点，不涉及proj
+	// Rejects invisible points; in fact, only points with r<=0.2 in camera coordinates are rejected, not involving proj
 	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
 	float4 p_view;
 	if (too_close(p_orig, viewmatrix, p_view))
 		return;
 
 	// Transform point by projecting
-	// 【相机模型】计算模型点投影到screen-space的坐标
-	float2 p_proj = point3ToLonlatScreen(p_view); // screen-space的坐标
+	// [Camera Model] Calculate the coordinates of the projected model points into the screen-space.
+	float2 p_proj = point3ToLonlatScreen(p_view); // screen-space coordinate
 
 	// If 3D covariance matrix is precomputed, use it, otherwise compute
 	// from scaling and rotation parameters. 
-	// 一般没有precompute的cov3D，传入是nullptr，因此使用scale和rot计算3D协方差
+	// Generally there is no precompute cov3D, the input is nullptr, so scale and rot are used to compute the 3D covariance
 	const float* cov3D;
 	if (cov3D_precomp != nullptr)
 	{
@@ -661,11 +652,11 @@ __global__ void preprocessLonlatCUDA(int P/*3D Gaus数目*/, int D/*active_sh_de
 	}
 
 	// Compute 2D screen-space covariance matrix
-	// 【相机模型】计算投影到2D screen-space的协方差
+	// [Camera Model] Calculate the covariance of projection to 2D screen-space
 	float3 cov = computeCov2DLonlat(p_orig, W, H, cov3D, viewmatrix);
 
 	// Invert covariance (EWA algorithm)
-	// 求conic：2D协方差的逆矩阵
+	// Finding the inverse matrix of conic:2D covariance
 	float det = (cov.x * cov.z - cov.y * cov.y);
 	if (det == 0.0f)
 		return;
@@ -676,13 +667,12 @@ __global__ void preprocessLonlatCUDA(int P/*3D Gaus数目*/, int D/*active_sh_de
 	// 2D covariance matrix). Use extent to compute a bounding rectangle
 	// of screen-space tiles that this Gaussian overlaps with. Quit if
 	// rectangle covers 0 tiles. 
-	// 计算2D协方差的特征值->计算Gaus的半径->计算Gaus的范围框
+	// Calculate the eigenvalues of the 2D covariance -> Calculate the radius of Gaus -> Calculate the range box of Gaus
 	float mid = 0.5f * (cov.x + cov.z);
 	float lambda1 = mid + sqrt(max(0.1f, mid * mid - det));
 	float lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
 	float my_radius = ceil(3.f * sqrt(max(lambda1, lambda2)));
 // float my_radius_y = ceil(3.f * sqrt(min(lambda1, lambda2)));
-// 【相机模型】TODO: 同样的圆，纬度越高，影响经度范围越大，对应范围框x方向越长
 // float my_radius_x = my_radius * cov.w;
 	float2 point_image = { ndc2Pix(p_proj.x, W), ndc2Pix(p_proj.y, H) };
 // int2 rect_min, rect_max;
@@ -694,7 +684,7 @@ __global__ void preprocessLonlatCUDA(int P/*3D Gaus数目*/, int D/*active_sh_de
 
 	// If colors have been precomputed, use them, otherwise convert
 	// spherical harmonics coefficients to RGB color.
-	// 着色：SH转RGB
+	// Coloring: SH to RGB
 	if (colors_precomp == nullptr)
 	{
 		glm::vec3 result = computeColorFromSH(idx, D, M, (glm::vec3*)orig_points, *cam_pos, shs, clamped);
@@ -704,15 +694,12 @@ __global__ void preprocessLonlatCUDA(int P/*3D Gaus数目*/, int D/*active_sh_de
 	}
 
 	// Store some useful helper data for the next steps.
-	depths[idx] = p_view.w; // 相机坐标 深度
-	radii[idx] = my_radius; // 图像空间 半径
-// radii_x[idx] = my_radius_x; // 图像空间 x方向（经度）半径
-	points_xy_image[idx] = point_image; // 图像空间 像素坐标
+	depths[idx] = p_view.w; // Camera coordinates Depth
+	radii[idx] = my_radius; // Image Space Radius
+	points_xy_image[idx] = point_image; // Image space Pixel coordinates
 	// Inverse 2D covariance and opacity neatly pack into one float4
-	conic_opacity[idx] = { conic.x, conic.y, conic.z, opacities[idx] }; // 协方差、透明度 打包
-// uint tiles_touched_x = (uint)min((int)grid.x, rect_max.x - rect_min.x);
-// tiles_touched[idx] = (uint)(rect_max.y - rect_min.y) * tiles_touched_x; // 用方框粗略估计的覆盖tile数
-	tiles_touched[idx] = (rect_max.y - rect_min.y) * (rect_max.x - rect_min.x); // 用方框粗略估计的覆盖tile数
+	conic_opacity[idx] = { conic.x, conic.y, conic.z, opacities[idx] }; // packing covariance and opacity
+	tiles_touched[idx] = (rect_max.y - rect_min.y) * (rect_max.x - rect_min.x); // Roughly estimated number of covered tiles using boxes
 }
 
 void FORWARD::render(

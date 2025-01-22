@@ -166,8 +166,8 @@ __forceinline__ __device__ float sigmoid(float x)
 __forceinline__ __device__ bool in_frustum(int idx,
 	const float* orig_points,
 	const float* viewmatrix, /*Tcw*/
-	const float* projmatrix, /*原版传入的是full transform，但最终注释掉了相关判断，因此相关计算为冗余*/
-	bool prefiltered, /*一般流程中恒为false*/
+	const float* projmatrix, /*The original version passed in full transform, but ended up commenting out the associated judgment, so the associated computation is redundant*/
+	bool prefiltered, /*false in the general process*/
 	float3& p_view)
 {
 	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
@@ -175,7 +175,7 @@ __forceinline__ __device__ bool in_frustum(int idx,
 	// Bring points to screen space
 	float4 p_hom = transformPoint4x4(p_orig, projmatrix);
 	float p_w = 1.0f / (p_hom.w + 0.0000001f);
-	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w }; // 没有用
+	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w }; // useless
 	p_view = transformPoint4x3(p_orig, viewmatrix);
 
 	if (p_view.z <= 0.2f)// || ((p_proj.x < -1.3 || p_proj.x > 1.3 || p_proj.y < -1.3 || p_proj.y > 1.3)))

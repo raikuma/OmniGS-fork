@@ -23,7 +23,7 @@
 #define CUDA_RASTERIZER_CONFIG_H_INCLUDED
 
 #define NUM_CHANNELS 3 // Default 3, RGB
-#define BLOCK_X 16 // X维度上的tile格子宽度（像素数）
-#define BLOCK_Y 16 // Y维度上的tile格子高度（像素数）
+#define BLOCK_X 16 // Width of the tile grid in the X dimension (number of pixels)
+#define BLOCK_Y 16 // Height of the tile grid in the Y dimension (number of pixels)
 
 #endif

@@ -42,15 +42,16 @@ namespace cg = cooperative_groups;
 
 // Helper function to find the next-highest bit of the MSB
 // on the CPU.
-// 查找最高有效位的位置，位数从1开始（例如若第18位为1，再高位都是0，则返回18）（第18位即2^17比指数多1所以叫next-highest？？？）
+// Find the position of the highest valid bit, with bits starting at 1 (e.g. if bit 18 is 1 and all higher bits are 0, return 18)
+// (bit 18, i.e. 2^17, is 1 more than the exponent so it's called next-highest???)
 uint32_t getHigherMsb(uint32_t n)
 {
 	uint32_t msb = sizeof(n) * 4;
 	uint32_t step = msb;
 	while (step > 1)
 	{
-		step /= 2; // 二分查找
-		if (n >> msb) // 右移msb位，如果n的后msb位之前没有有效数字，则msb-=step即往低位查找，否则往高位查找
+		step /= 2; // binary search
+		if (n >> msb) // Right shift msb bit, if there is no valid number before the last msb bit of n, then msb -= step that is, to the low bit to find, otherwise to the high bit to lookup
 			msb += step;
 		else
 			msb -= step;
@@ -91,28 +92,28 @@ __global__ void markAllVisible(int P,
 // Generates one key/value pair for all Gaussian / tile overlaps. 
 // Run once per Gaussian (1:N mapping).
 __global__ void duplicateWithKeys(
-	int P,                   // 输入：3D Gaus数
-	const float2* points_xy, // 输入：图像空间 像素坐标
-	const float* depths,     // 输入：相机坐标 深度
-	const uint32_t* offsets, // 输入：覆盖的tile点次（累积值）
-	uint64_t* gaussian_keys_unsorted,   // 输出：（未排序）instance的key
-	uint32_t* gaussian_values_unsorted, // 输出：（未排序）instance的Gaus idx
-	int* radii,              // 输入：图像空间 半径
-	dim3 grid /*输入：tile grid的维度shape(格子数目)*/)
+	int P,                   // Input: 3D Gaus number
+	const float2* points_xy, // Input: image space Pixel coordinates
+	const float* depths,     // Input: camera coordinates Depth
+	const uint32_t* offsets, // Input: number of tile points covered (cumulative value)
+	uint64_t* gaussian_keys_unsorted,   // Output: (unsorted) instance key
+	uint32_t* gaussian_values_unsorted, // Output: (unsorted) instance Gaus idx
+	int* radii,              // Input: image space Radius
+	dim3 grid /*Input: dimension shape of the tile grid (number of grids)*/)
 {
 	auto idx = cg::this_grid().thread_rank();
 	if (idx >= P)
 		return;
 
 	// Generate no key/value pair for invisible Gaussians
-	if (radii[idx] > 0) // 只有preprocess中未被跳过的Gaus会参与处理、产生key
+	if (radii[idx] > 0) // Only the Gaus that were not skipped in the preprocess will be involved in the processing, generating key
 	{
 		// Find this Gaussian's offset in buffer for writing keys/values.
-		// 每个Gaus预留了覆盖tile数个空位给它的key
+		// Each Gaus sets aside a number of empty spaces covering the tile for its key
 		uint32_t off = (idx == 0) ? 0 : offsets[idx - 1];
 		uint2 rect_min, rect_max;
 
-		// 图像空间中根据中心和半径，计算Gaus对应的范围方框（用方框两个对角顶点落在的tile的X序号和Y序号表示，因此下面遍历这个结果相当于直接按序号遍历方框覆盖的tile）
+		// Calculate the range box corresponding to Gaus in image space based on the center and radius (denoted by the X and Y ordinal numbers of the tile on which the two diagonal vertices of the box fall, so traversing this result below is equivalent to traversing the tile covered by the box directly by ordinal number)
 		getRect(points_xy[idx], radii[idx], rect_min, rect_max, grid);
 
 		// For each tile that the bounding rect overlaps, emit a 
@@ -120,9 +121,9 @@ __global__ void duplicateWithKeys(
 		// and the value is the ID of the Gaussian. Sorting the values 
 		// with this key yields Gaussian IDs in a list, such that they
 		// are first sorted by tile and then by depth. 
-		// 每个Gaus拥有其覆盖tile数个64位key，即每个Gaus instance拥有1个key
-		// 每个key的高32位是tile的一维序号（先行后列），低32位是相机坐标深度，目的是这些instance排序时先按tile排序，再按深度排序
-		// key对应的value是Gaus的idx，用于从instance反向查找对应的Gaus
+		// Each Gaus has a 64-bit key for the number of tiles it covers, i.e. each Gaus instance has 1 key.
+		// The upper 32 bits of each key are the one-dimensional number of the tile (first in line, then in columns), and the lower 32 bits are the depth of the camera coordinates, so that the instances are sorted by tile first, and then by depth.
+		// The value of the key is the idx of the Gaus, which is used to reverse lookup the corresponding Gaus from the instance.
 		for (int y = rect_min.y; y < rect_max.y; y++)
 		{
 			for (int x = rect_min.x; x < rect_max.x; x++)
@@ -137,67 +138,6 @@ __global__ void duplicateWithKeys(
 		}
 	}
 }
-
-// // Generates one key/value pair for all Gaussian / tile overlaps. 
-// // Run once per Gaussian (1:N mapping).
-// __global__ void duplicateWithKeys(
-// 	int P,                   // 输入：3D Gaus数
-// 	const float2* points_xy, // 输入：图像空间 像素坐标
-// 	const float* depths,     // 输入：相机坐标 深度
-// 	const uint32_t* offsets, // 输入：覆盖的tile点次（累积值）
-// 	uint64_t* gaussian_keys_unsorted,   // 输出：（未排序）instance的key
-// 	uint32_t* gaussian_values_unsorted, // 输出：（未排序）instance的Gaus idx
-// 	int* radii,              // 输入：图像空间 半径
-// 	int* radii_x,            // 输入：图像空间 x方向半径
-// 	dim3 grid /*输入：tile grid的维度shape(格子数目)*/)
-// {
-// 	auto idx = cg::this_grid().thread_rank();
-// 	if (idx >= P)
-// 		return;
-
-// 	// Generate no key/value pair for invisible Gaussians
-// 	if (radii[idx] > 0) // 只有preprocess中未被跳过的Gaus会参与处理、产生key
-// 	{
-// 		// Find this Gaussian's offset in buffer for writing keys/values.
-// 		// 每个Gaus预留了覆盖tile数个空位给它的key
-// 		uint32_t off = (idx == 0) ? 0 : offsets[idx - 1];
-// // int2 rect_min, rect_max;
-// 		uint2 rect_min, rect_max;
-// 		// 图像空间中根据中心和半径，计算Gaus对应的范围方框（用方框两个对角顶点落在的tile的X序号和Y序号表示，因此下面遍历这个结果相当于直接按序号遍历方框覆盖的tile）
-// // getRectCyclic(points_xy[idx], radii_x[idx], radii[idx], rect_min, rect_max, grid);
-// 		getRect(points_xy[idx], radii[idx], rect_min, rect_max, grid);
-
-// 		// For each tile that the bounding rect overlaps, emit a 
-// 		// key/value pair. The key is |  tile ID  |      depth      |,
-// 		// and the value is the ID of the Gaussian. Sorting the values 
-// 		// with this key yields Gaussian IDs in a list, such that they
-// 		// are first sorted by tile and then by depth. 
-// 		// 每个Gaus拥有其覆盖tile数个64位key，即每个Gaus instance拥有1个key
-// 		// 每个key的高32位是tile的一维序号（先行后列），低32位是相机坐标深度，目的是这些instance排序时先按tile排序，再按深度排序
-// 		// key对应的value是Gaus的idx，用于从instance反向查找对应的Gaus
-// // int gx = (int)grid.x;
-// // int instance_x_idx;
-// 		for (int y = rect_min.y; y < rect_max.y; y++)
-// 		{
-// // instance_x_idx = 0;
-// 			for (int x = rect_min.x; x < rect_max.x; x++)
-// 			{
-// // if (instance_x_idx >= gx) continue;
-// // int x_actual = x;
-// // if (x_actual < 0) x_actual += gx;
-// // else if (x_actual >= gx) x_actual -= gx;
-// // uint64_t key = y * grid.x + x_actual;
-// 				uint64_t key = y * grid.x + x;
-// 				key <<= 32;
-// 				key |= *((uint32_t*)&depths[idx]);
-// 				gaussian_keys_unsorted[off] = key;
-// 				gaussian_values_unsorted[off] = idx;
-// 				off++;
-// // instance_x_idx++;
-// 			}
-// 		}
-// 	}
-// }
 
 // Check keys to see if it is at the start/end of one tile's range in 
 // the full sorted list. If yes, write start/end of this tile. 
@@ -252,8 +192,8 @@ void CudaRasterizer::LonlatRasterizer::markVisible(
 }
 
 /**
- * 创建一个新GeometryState对象，存放P个3D点的数据
- * 内层：所有点的同种数据放在一个指针下（连续）；外层：不同数据占用的内存块也连续
+ * Create a new GeometryState object to hold the data of P 3D points
+ * Inner layer: all points of the same kind of data under a pointer (continuous); outer layer: different data occupy memory blocks also continuous
  */
 CudaRasterizer::GeometryState CudaRasterizer::GeometryState::fromChunk(char*& chunk, size_t P)
 {
@@ -273,8 +213,8 @@ CudaRasterizer::GeometryState CudaRasterizer::GeometryState::fromChunk(char*& ch
 }
 
 /**
- * 创建一个新ImageState对象，存放N个像素的数据
- * 内层：所有像素的同种数据放在一个指针下（连续）；外层：不同数据占用的内存块也连续
+ * Create a new ImageState object to hold the data of N pixels
+ * Inner layer: all pixels of the same kind of data are placed under one pointer (continuous); outer layer: different data occupy memory blocks that are also continuous
  */
 CudaRasterizer::ImageState CudaRasterizer::ImageState::fromChunk(char*& chunk, size_t N)
 {
@@ -286,8 +226,8 @@ CudaRasterizer::ImageState CudaRasterizer::ImageState::fromChunk(char*& chunk, s
 }
 
 /**
- * 创建一个新BinningState对象，存放num_rendered个实际等效渲染点的数据
- * 内层：所有点的同种数据放在一个指针下（连续）；外层：不同数据占用的内存块也连续
+ * Create a new BinningState object that holds data for num_rendered actual equivalent rendered points.
+ * Inner: same data for all points under one pointer (contiguous); outer: different data occupies also contiguous memory blocks
  */
 CudaRasterizer::BinningState CudaRasterizer::BinningState::fromChunk(char*& chunk, size_t P)
 {
@@ -306,12 +246,12 @@ CudaRasterizer::BinningState CudaRasterizer::BinningState::fromChunk(char*& chun
 
 // Forward rendering procedure for differentiable rasterization
 // of Gaussians.
-// 只有out_color（渲染结果图像）和radii（gaus半径，用于剔除gaus、确定更新哪些gaus的梯度等，即控制densify过程）是真正输出，其余都是输入或上下文
+// Only out_color (which renders the resulting image) and radii (the gaus radius, which is used to cull gaus, determine which gaus' gradients to update, etc., i.e., to control the densify process) are real outputs; the rest are inputs or contexts
 int CudaRasterizer::Rasterizer::forward(
 	std::function<char* (size_t)> geometryBuffer,
 	std::function<char* (size_t)> binningBuffer,
 	std::function<char* (size_t)> imageBuffer,
-	const int P/*3D Gaus数目*/, int D/*active_sh_degree_，仅用于preprocess*/, int M/*dc和rest谐波之和(1+15)*/,
+	const int P/*3D Gaus number*/, int D/*active_sh_degree_，only used by preprocess*/, int M/*Sum of dc and rest harmonics(1+15)*/,
 	const float* background,
 	const int width, int height,
 	const float* means3D,
@@ -331,40 +271,40 @@ int CudaRasterizer::Rasterizer::forward(
 	int* radii,
 	const bool render_depth)
 {
-	// 传进来的实际上是tan(fov/2)；fov转换成焦距
+	// What comes in is actually tan(fov/2); fov is converted to focal length
 	const float focal_y = height / (2.0f * tan_fovy);
 	const float focal_x = width / (2.0f * tan_fovx);
 
-	// 先计算P个3D点所需的空间（char数，即byte数），再通过传入的torch Tensor的resize_接口分配空间，最后在这段空间上划分State各成员指针的位置
+	// The space required for P 3D points (number of chars, i.e. bytes) is first calculated, then space is allocated via the resize_ interface of the incoming torch Tensor, and finally the location of each member pointer of State is divided on this space
 	size_t chunk_size = required<GeometryState>(P);
 	char* chunkptr = geometryBuffer(chunk_size);
 	GeometryState geomState = GeometryState::fromChunk(chunkptr, P);
 
-	// 如果没有radii则使用内置（但实际上总是会在外界弄好一个tensor传进来）
+	// If no radii then use the built-in (but in practice always get a tensor passed in from outside)
 	if (radii == nullptr)
 	{
 		radii = geomState.internal_radii;
 	}
 
-	// 划分tile：每个维度上tile数都需要进1——不能去尾
-	// perspective相机的tile是直接画方格
+	// Delineate the tiles: the number of tiles in each dimension needs to be rounded up to 1 - no tailing
+	// The perspective camera's tiles are drawn directly as squares.
 	dim3 tile_grid((width + BLOCK_X - 1) / BLOCK_X, (height + BLOCK_Y - 1) / BLOCK_Y, 1);
 	dim3 block(BLOCK_X, BLOCK_Y, 1);
 
 	// Dynamically resize image-based auxiliary buffers during training
-	// 先计算width * height个像素所需的空间（char数，即byte数），再通过传入的torch Tensor的resize_接口分配空间，最后在这段空间上划分State各成员指针的位置
+	// First calculate the space needed for width * height pixels (number of chars, i.e. bytes), then allocate the space via the incoming torch Tensor's resize_ interface, and finally divide the space between State's member pointers.
 	size_t img_chunk_size = required<ImageState>(width * height);
 	char* img_chunkptr = imageBuffer(img_chunk_size);
 	ImageState imgState = ImageState::fromChunk(img_chunkptr, width * height);
 
-	// 这个Gaussian rasterizer只能自主计算RGB颜色，其余色彩空间需要外界预计算
+	// The Gaussian rasterizer can only compute RGB colors on its own, the rest of the color space needs to be pre-calculated from outside.
 	if (NUM_CHANNELS != 3 && colors_precomp == nullptr)
 	{
 		throw std::runtime_error("For non-RGB, provide precomputed Gaussian colors!");
 	}
 
 	// Run preprocessing per-Gaussian (transformation, bounding, conversion of SHs to RGB)
-	// 计算每个3D Gaus点的2D图像空间的协方差、范围框，并且SH转RGB（计算图像空间的颜色）
+	// Calculate covariance, range frame in 2D image space for each 3D Gaus point, and SH to RGB (calculate color in image space)
 	FORWARD::preprocess(
 		P, D, M,
 		means3D,
@@ -394,23 +334,23 @@ int CudaRasterizer::Rasterizer::forward(
 
 	// Compute prefix sum over full list of touched tile counts by Gaussians
 	// E.g., [2, 3, 0, 2, 1] -> [2, 5, 5, 7, 8]
-	// 输入：tiles_touched：每个Gaus点覆盖的tile数
-	// 输出：point_offsets: 到每个Gaus点为止，所有Gaus累积覆盖tile次数（“人次“的概念，点次）
+	// Input: tiles_touched: number of tiles covered by each Gaus point.
+	// Output: point_offsets: the cumulative number of times all Gaus points have covered a tile up to each Gaus point (the notion of “person times”, point times)
 	cub::DeviceScan::InclusiveSum(geomState.scanning_space, geomState.scan_size,
 		geomState.tiles_touched, geomState.point_offsets, P);
 
 	// Retrieve total number of Gaussian instances to launch and resize aux buffers
-	//num_rendered = 截至最后一个Gaus，所有Gaus累积覆盖tile点次（全渲染总共需要计算的等效的点数目）
+	// num_rendered = cumulative number of tile points covered by all Gaus up to the last Gaus (total number of equivalent points to be calculated for full rendering)
 	int num_rendered;
 	cudaMemcpy(&num_rendered, geomState.point_offsets + P - 1, sizeof(int), cudaMemcpyDeviceToHost);
-	// binning存放参与渲染的等效点云
+	// binning holds the equivalent point cloud that is involved in the rendering.
 	size_t binning_chunk_size = required<BinningState>(num_rendered);
 	char* binning_chunkptr = binningBuffer(binning_chunk_size);
 	BinningState binningState = BinningState::fromChunk(binning_chunkptr, num_rendered);
 
 	// For each instance to be rendered, produce adequate [ tile | depth ] key 
 	// and corresponding dublicated Gaussian indices to be sorted
-	// 对于每个Gaus，若可视，则生成其实际参与渲染次数（即覆盖tile个数）个instance，instance按所在tile序号和对应Gaus深度生成key用于排序
+	// For each Gaus, the actual number of times it has been rendered (i.e., the number of tiles it has covered) is generated as an instance if it is visible, and the instance is sorted by the tile number and the depth of the corresponding Gaus to generate a key.
 	duplicateWithKeys << <(P + 255) / 256, 256 >> > (
 		P,
 		geomState.means2D,
@@ -422,31 +362,31 @@ int CudaRasterizer::Rasterizer::forward(
 		tile_grid
 		);
 
-	// tile格子总数以2为底的对数，向上取整，例如有100格，则bit=7（2^6=64,2^7=128）
-	// 用于计算key的最高有效位，提供给cuda排序（有利于性能？）
+	// Logarithm of the total number of tile grids in base 2, rounded up, e.g. if there are 100 grids, bit=7 (2^6=64,2^7=128)
+	// Used to calculate the highest valid bit of the key, provided for cuda sorting (good for performance?).
 	int bit = getHigherMsb(tile_grid.x * tile_grid.y);
 
 	// Sort complete list of (duplicated) Gaussian indices by keys
-	// 升序排序Gaus instances，先深度后tile序号（即同一tile的放一起，内部按深度）
-	// 排序是为了能够生成后面的索引ranges，使每个tile能轻易定位自己包含哪些instance
+	// Sort Gaus instances in ascending order, depth first, then tile number (i.e. same tile together, internally by depth).
+	// Sorting is done to be able to generate back-indexed ranges, so that each tile can easily locate which instances it contains.
 	cub::DeviceRadixSort::SortPairs(
 		binningState.list_sorting_space,
 		binningState.sorting_size,
 		binningState.point_list_keys_unsorted, binningState.point_list_keys,
 		binningState.point_list_unsorted, binningState.point_list,
-		num_rendered, 0, 32 + bit/*低32位是深度，完整比较；高32位的tile序号可根据tile总数确定最大序号从而确定比较其低bit位即可*/);
+		num_rendered, 0, 32 + bit/*The lower 32 bits are the depth, the complete comparison; the higher 32 bits of the tile number can be determined based on the total number of tiles to determine the maximum number to determine the comparison of its low bit can be*/);
 
-	// 各个像素的ranges初始化为(0,0)
+	// The ranges of each pixel are initialized to (0,0)
 	cudaMemset(imgState.ranges, 0, tile_grid.x * tile_grid.y * sizeof(uint2));
 
 	// Identify start and end of per-tile workloads in sorted list
-	// 计算ranges，即每个tile包含的Gaus instance序号
-	// ranges.x：instance序号起点
-	// ranges.y：下一个tile的instance序号起点，即当前tile的instance序号终点+1
-	// 并行遍历排序后的每个instance，
-	// 若其为第一个，则其对应tile的ranges.x=0
-	// 若其为分界点（即其前一个instance属于前一个tile，与它所属不同），则前一个tile的ranges.y=它所属的tile的ranges.x=它的idx
-	// 若其为最后一个，则其对应tile的ranges.y=instance总数（点次）
+	// Calculate ranges, the number of Gaus instances each tile contains
+	// ranges.x: starting point of instance number
+	// ranges.y: start of the instance number of the next tile, i.e. the end of the instance number of the current tile + 1.
+	// Iterate through each sorted instance in parallel.
+	// If it is the first, then ranges.x = 0 for the corresponding tile.
+	// If it's a split point (i.e., its previous instance belongs to a previous tile, different from the one it belongs to), then ranges.y of the previous tile = ranges.x of the tile it belongs to = its idx
+	// if it is the last one, then ranges.y of its corresponding tile = total number of instances (point times)
 	if (num_rendered > 0)
 		identifyTileRanges << <(num_rendered + 255) / 256, 256 >> > (
 			num_rendered,
@@ -513,7 +453,7 @@ void CudaRasterizer::Rasterizer::backward(
 	char* geom_buffer,
 	char* binning_buffer,
 	char* img_buffer,
-	const float* dL_dpix, // grad_outputs[0]，即d{loss}_d{forward输出}[0]，由torch自动计算，以下backward定义的是d{forward输出}_d{forward输入}
+	const float* dL_dpix, // grad_outputs[0], i.e., d{loss}_d{forward output}[0], is computed automatically by torch, and the following backward is defined as d{forward output}_d{forward input}
 	float* dL_dmean2D,
 	float* dL_dconic,
 	float* dL_dopacity,
@@ -525,7 +465,7 @@ void CudaRasterizer::Rasterizer::backward(
 	float* dL_drot)
 {
 	GeometryState geomState = GeometryState::fromChunk(geom_buffer, P);
-	BinningState binningState = BinningState::fromChunk(binning_buffer, R); // 通过ctx上下文获取Gaus instance数目R
+	BinningState binningState = BinningState::fromChunk(binning_buffer, R); // Get the number of Gaus instances R via ctx context
 	ImageState imgState = ImageState::fromChunk(img_buffer, width * height);
 
 	if (radii == nullptr)
@@ -533,12 +473,12 @@ void CudaRasterizer::Rasterizer::backward(
 		radii = geomState.internal_radii;
 	}
 
-	// 从ctx传进来的和forward一样，实际上是tan(fov/2)；fov转换成焦距
+	// What comes in from ctx is the same as forward, which is actually tan(fov/2); fov is converted to focal length
 	const float focal_y = height / (2.0f * tan_fovy);
 	const float focal_x = width / (2.0f * tan_fovx);
 
-	// 划分tile：每个维度上tile数都需要进1——不能去尾
-	// 在screen-space划分
+	// Divide the tiles: the number of tiles in each dimension needs to be rounded up to 1 - no tails!
+	// Divide in screen-space
 	const dim3 tile_grid((width + BLOCK_X - 1) / BLOCK_X, (height + BLOCK_Y - 1) / BLOCK_Y, 1);
 	const dim3 block(BLOCK_X, BLOCK_Y, 1);
 
@@ -567,8 +507,8 @@ void CudaRasterizer::Rasterizer::backward(
 	// Take care of the rest of preprocessing. Was the precomputed covariance
 	// given to us or a scales/rot pair? If precomputed, pass that. If not,
 	// use the one we computed ourselves.
-	// 协方差矩阵可能是预计算的完整输入的，也可能是输入scale和rot在rasterizer内部计算的，注意两种情况处理不同
-	// 一般而言用的是第二种
+	// The covariance matrix may be pre-calculated from the full input, or it may be calculated from the input scale and rot inside the rasterizer, note that the two cases are handled differently.
+	// Generally the second one is used
 	const float* cov3D_ptr = (cov3D_precomp != nullptr) ? cov3D_precomp : geomState.cov3D;
 	BACKWARD::preprocess(P, D, M,
 		(float3*)means3D,
@@ -596,12 +536,12 @@ void CudaRasterizer::Rasterizer::backward(
 
 // Forward rendering procedure for differentiable rasterization
 // of Gaussians.
-// 只有out_color（渲染结果图像）和radii（gaus半径，用于剔除gaus、确定更新哪些gaus的梯度等，即控制densify过程）是真正输出，其余都是输入或上下文
+// Only out_color (which renders the resulting image) and radii (the gaus radius, which is used to cull gaus, determine which gaus' gradients to update, etc., i.e., to control the densify process) are real outputs; the rest are inputs or contexts
 int CudaRasterizer::LonlatRasterizer::forward(
 	std::function<char* (size_t)> geometryBuffer,
 	std::function<char* (size_t)> binningBuffer,
 	std::function<char* (size_t)> imageBuffer,
-	const int P/*3D Gaus数目*/, int D/*active_sh_degree_，仅用于preprocess*/, int M/*dc和rest谐波之和(1+15)*/,
+	const int P/*3D Gaus number*/, int D/*active_sh_degree_，only used by preprocess*/, int M/*Sum of dc and rest harmonics (1+15)*/,
 	const float* background,
 	const int width, int height,
 	const float* means3D,
@@ -619,36 +559,36 @@ int CudaRasterizer::LonlatRasterizer::forward(
 	int* radii)
 // int* radii_x)
 {
-	// 先计算P个3D点所需的空间（char数，即byte数），再通过传入的torch Tensor的resize_接口分配空间，最后在这段空间上划分State各成员指针的位置
+	// The space required for P 3D points (number of chars, i.e. bytes) is first calculated, then space is allocated via the resize_ interface of the incoming torch Tensor, and finally the location of each member pointer of State is divided on this space
 	size_t chunk_size = required<GeometryState>(P);
 	char* chunkptr = geometryBuffer(chunk_size);
 	GeometryState geomState = GeometryState::fromChunk(chunkptr, P);
 
-	// 如果没有radii则使用内置（但实际上总是会在外界弄好一个tensor传进来）
+	// If no radii then use the built-in (but in practice always get a tensor passed in from outside)
 	if (radii == nullptr)
 	{
 		radii = geomState.internal_radii;
 	}
 
-	// 划分tile：每个维度上tile数都需要进1——不能去尾
-	// 【相机模型】perspective相机的tile是直接画方格
+	// Delineate the tiles: the number of tiles in each dimension needs to be rounded up to 1 - no tailing.
+	// [Camera model] Perspective camera's tiles are drawn directly as squares.
 	dim3 tile_grid((width + BLOCK_X - 1) / BLOCK_X, (height + BLOCK_Y - 1) / BLOCK_Y, 1);
 	dim3 block(BLOCK_X, BLOCK_Y, 1);
 
 	// Dynamically resize image-based auxiliary buffers during training
-	// 先计算width * height个像素所需的空间（char数，即byte数），再通过传入的torch Tensor的resize_接口分配空间，最后在这段空间上划分State各成员指针的位置
+	// Calculate the space needed for width * height pixels (number of chars, i.e. bytes), then allocate the space via the incoming torch Tensor's resize_ interface, and finally divide the space between State's member pointers.
 	size_t img_chunk_size = required<ImageState>(width * height);
 	char* img_chunkptr = imageBuffer(img_chunk_size);
 	ImageState imgState = ImageState::fromChunk(img_chunkptr, width * height);
 
-	// 这个Gaussian rasterizer只能自主计算RGB颜色，其余色彩空间需要外界预计算
+	// The Gaussian rasterizer can only compute RGB colors on its own, the rest of the color space needs to be pre-calculated from outside.
 	if (NUM_CHANNELS != 3 && colors_precomp == nullptr)
 	{
 		throw std::runtime_error("For non-RGB, provide precomputed Gaussian colors!");
 	}
 
 	// Run preprocessing per-Gaussian (transformation, bounding, conversion of SHs to RGB)
-	// 计算每个3D Gaus点的2D图像空间的协方差、范围框，并且SH转RGB（计算图像空间的颜色）
+	// Calculate covariance, range frame in 2D image space for each 3D Gaus point, and SH to RGB (calculate color in image space)
 	FORWARD::preprocessLonlat(
 		P, D, M,
 		means3D,
@@ -677,13 +617,13 @@ int CudaRasterizer::LonlatRasterizer::forward(
 
 	// Compute prefix sum over full list of touched tile counts by Gaussians
 	// E.g., [2, 3, 0, 2, 1] -> [2, 5, 5, 7, 8]
-	// 输入：tiles_touched：每个Gaus点覆盖的tile数
-	// 输出：point_offsets: 到每个Gaus点为止，所有Gaus累积覆盖tile次数（“人次“的概念，点次）
+	// Input: tiles_touched: number of tiles covered by each Gaus point.
+	// Output: point_offsets: the cumulative number of times all Gaus points have covered a tile up to each Gaus point (the notion of “person times”, point times)
 	cub::DeviceScan::InclusiveSum(geomState.scanning_space, geomState.scan_size,
 		geomState.tiles_touched, geomState.point_offsets, P);
 
 	// Retrieve total number of Gaussian instances to launch and resize aux buffers
-	//num_rendered = 截至最后一个Gaus，所有Gaus累积覆盖tile点次（全渲染总共需要计算的等效的点数目）
+	//num_rendered = Cumulative number of tile points covered by all Gaus up to the last Gaus (total number of equivalent points to be calculated for the full rendering)
 	int num_rendered;
 	cudaMemcpy(&num_rendered, geomState.point_offsets + P - 1, sizeof(int), cudaMemcpyDeviceToHost);
 	// binning存放参与渲染的等效点云
@@ -693,7 +633,7 @@ int CudaRasterizer::LonlatRasterizer::forward(
 
 	// For each instance to be rendered, produce adequate [ tile | depth ] key 
 	// and corresponding dublicated Gaussian indices to be sorted
-	// 对于每个Gaus，若可视，则生成其实际参与渲染次数（即覆盖tile个数）个instance，instance按所在tile序号和对应Gaus深度生成key用于排序
+	// For each Gaus, the actual number of times it has participated in rendering (i.e., the number of tiles it covers) is generated as an instance, and the instance is sorted by the number of tiles it is on and the depth of the corresponding Gaus.
 	duplicateWithKeys << <(P + 255) / 256, 256 >> > (
 		P,
 		geomState.means2D,
@@ -706,31 +646,31 @@ int CudaRasterizer::LonlatRasterizer::forward(
 		tile_grid
 		);
 
-	// tile格子总数以2为底的对数，向上取整，例如有100格，则bit=7（2^6=64,2^7=128）
-	// 用于计算key的最高有效位，提供给cuda排序（有利于性能？）
+	// Logarithm of the total number of tile grids in base 2, rounded up, e.g. if there are 100 grids, bit=7 (2^6=64,2^7=128)
+	// Used to calculate the highest valid bit of the key, provided for cuda sorting (good for performance?).
 	int bit = getHigherMsb(tile_grid.x * tile_grid.y);
 
 	// Sort complete list of (duplicated) Gaussian indices by keys
-	// 升序排序Gaus instances，先深度后tile序号（即同一tile的放一起，内部按深度）
-	// 排序是为了能够生成后面的索引ranges，使每个tile能轻易定位自己包含哪些instance
+	// Sort Gaus instances in ascending order, depth first, then tile number (i.e. same tile together, internally by depth).
+	// Sorting is done to be able to generate back-indexed ranges, so that each tile can easily locate which instances it contains.
 	cub::DeviceRadixSort::SortPairs(
 		binningState.list_sorting_space,
 		binningState.sorting_size,
 		binningState.point_list_keys_unsorted, binningState.point_list_keys,
 		binningState.point_list_unsorted, binningState.point_list,
-		num_rendered, 0, 32 + bit/*低32位是深度，完整比较；高32位的tile序号可根据tile总数确定最大序号从而确定比较其低bit位即可*/);
+		num_rendered, 0, 32 + bit/*The lower 32 bits are the depth, the complete comparison; the higher 32 bits of the tile number can be determined based on the total number of tiles to determine the maximum number to determine the comparison of its low bit can be*/);
 
 	// 各个像素的ranges初始化为(0,0)
 	cudaMemset(imgState.ranges, 0, tile_grid.x * tile_grid.y * sizeof(uint2));
 
 	// Identify start and end of per-tile workloads in sorted list
-	// 计算ranges，即每个tile包含的Gaus instance序号
-	// ranges.x：instance序号起点
-	// ranges.y：下一个tile的instance序号起点，即当前tile的instance序号终点+1
-	// 并行遍历排序后的每个instance，
-	// 若其为第一个，则其对应tile的ranges.x=0
-	// 若其为分界点（即其前一个instance属于前一个tile，与它所属不同），则前一个tile的ranges.y=它所属的tile的ranges.x=它的idx
-	// 若其为最后一个，则其对应tile的ranges.y=instance总数（点次）
+	// Calculate ranges, the number of Gaus instances each tile contains
+	// ranges.x: starting point of instance number
+	// ranges.y: start of the instance number of the next tile, i.e. the end of the instance number of the current tile + 1.
+	// Iterate through each sorted instance in parallel.
+	// If it is the first, then ranges.x = 0 for the corresponding tile.
+	// If it's a split point (i.e., its previous instance belongs to a previous tile, different from the one it belongs to), then ranges.y of the previous tile = ranges.x of the tile it belongs to = its idx
+	// if it is the last one, then ranges.y of its corresponding tile = total number of instances (point times)
 	if (num_rendered > 0)
 		identifyTileRanges << <(num_rendered + 255) / 256, 256 >> > (
 			num_rendered,
@@ -775,7 +715,7 @@ void CudaRasterizer::LonlatRasterizer::backward(
 	char* geom_buffer,
 	char* binning_buffer,
 	char* img_buffer,
-	const float* dL_dpix, // grad_outputs[0]，即d{loss}_d{forward输出}[0]，由torch自动计算，以下backward定义的是d{forward输出}_d{forward输入}
+	const float* dL_dpix, // grad_outputs[0], i.e., d{loss}_d{forward output}[0], is computed automatically by torch, and the following backward is defined as d{forward output}_d{forward input}
 	float* dL_dmean2D,
 	float* dL_dconic,
 	float* dL_dopacity,
@@ -789,7 +729,7 @@ void CudaRasterizer::LonlatRasterizer::backward(
 	float* dpy_dt)
 {
 	GeometryState geomState = GeometryState::fromChunk(geom_buffer, P);
-	BinningState binningState = BinningState::fromChunk(binning_buffer, R); // 通过ctx上下文获取Gaus instance数目R
+	BinningState binningState = BinningState::fromChunk(binning_buffer, R); // Get the number of Gaus instances R via ctx context
 	ImageState imgState = ImageState::fromChunk(img_buffer, width * height);
 
 	if (radii == nullptr)
@@ -797,8 +737,8 @@ void CudaRasterizer::LonlatRasterizer::backward(
 		radii = geomState.internal_radii;
 	}
 
-	// 划分tile：每个维度上tile数都需要进1——不能去尾
-	// 在screen-space划分
+	// Divide the tiles: the number of tiles in each dimension needs to be rounded up to 1 - no tails!
+	// Divide in screen-space
 	const dim3 tile_grid((width + BLOCK_X - 1) / BLOCK_X, (height + BLOCK_Y - 1) / BLOCK_Y, 1);
 	const dim3 block(BLOCK_X, BLOCK_Y, 1);
 
@@ -827,8 +767,8 @@ void CudaRasterizer::LonlatRasterizer::backward(
 	// Take care of the rest of preprocessing. Was the precomputed covariance
 	// given to us or a scales/rot pair? If precomputed, pass that. If not,
 	// use the one we computed ourselves.
-	// 协方差矩阵可能是预计算的完整输入的，也可能是输入scale和rot在rasterizer内部计算的，注意两种情况处理不同
-	// 一般而言用的是第二种
+	// The covariance matrix may be pre-calculated from the full input, or it may be calculated from the input scale and rot inside the rasterizer, note that the two cases are handled differently.
+	// Generally the second one is used
 	const float* cov3D_ptr = (cov3D_precomp != nullptr) ? cov3D_precomp : geomState.cov3D;
 	BACKWARD::preprocessLonlat(P, D, M,
 		(float3*)means3D,

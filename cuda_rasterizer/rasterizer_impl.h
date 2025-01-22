@@ -29,20 +29,21 @@
 namespace CudaRasterizer
 {
 	/**
-	 * 从一块裸字节指针创建并分配T类型指针
-	 * 使用时alignment = 2^n，作用是把chunk加上alignment-1后低n位置零，即以alignment为单位无条件进一，
-	 * 从而align内存分配，使得ptr和chunk以alignment个byte为单位分块
+	 * Create and allocate T-type pointers from a block of bare byte pointers
+	 * The use of alignment = 2^n, the role of the chunk plus alignment-1 after the low n position zero,
+	 * that is, the alignment of the unit unconditional into one, thus align memory allocation,
+	 * so that the ptr and chunk to alignment byte unit chunks
 	 */
 	template <typename T>
 	static void obtain(char*& chunk, T*& ptr, std::size_t count, std::size_t alignment)
 	{
 		std::size_t offset = (reinterpret_cast<std::uintptr_t>(chunk) + alignment - 1) & ~(alignment - 1);
-		ptr = reinterpret_cast<T*>(offset); // 输出结果：给成员指针分配内存起始位置
-		chunk = reinterpret_cast<char*>(ptr + count); // 先ptr+count算下一个成员应当起始的内存位置，再转成通用过渡类型的指针
+		ptr = reinterpret_cast<T*>(offset); // Output result: allocate memory start location to member pointer
+		chunk = reinterpret_cast<char*>(ptr + count); // First ptr+count counts the memory location where the next member should start, then converts it to a pointer of the generic transition type
 	}
 
 	/**
-	 * 3D点云状态
+	 * state of 3D point cloud
 	 */
 	struct GeometryState
 	{
@@ -62,13 +63,13 @@ namespace CudaRasterizer
 	};
 
 	/**
-	 * 图像像素状态
+	 * state of image pixels
 	 */
 	struct ImageState
 	{
-		uint2* ranges; // 一个tile对应的第一个Gaus instance的序号（存放在.x）和下一个tile的第一个Gaus instance的序号（存放在.y）（排序后）；预留了像素数那么多的空间，但实际只需要tile数那么多？
+		uint2* ranges; // the ordinal number of the first Gaus instance corresponding to a tile (stored in .x) and the ordinal number of the first Gaus instance of the next tile (stored in .y) (after sorting); so many pixels are reserved, but only so many tiles are actually needed?
 		uint32_t* n_contrib;
-		float* accum_alpha; // 一个tile的所有像素累积alpha值都为1时该tile渲染完成
+		float* accum_alpha; // rendering of a tile is complete when all pixels in the tile have a cumulative alpha value of 1.
 
 		static ImageState fromChunk(char*& chunk, size_t N);
 	};
@@ -89,8 +90,8 @@ namespace CudaRasterizer
 	};
 
 	/**
-	 * 获取T（三种state）具有P个元素时所需的存放空间大小
-	 * size = nullptr相当于从零开始，所以结果是直接累积量（加上alignment）
+	 * Get the size of the storage space required when T (three states) has P elements
+	 * size = nullptr starts from zero, so the result is a direct cumulative quantity (plus alignment)
 	 */
 	template<typename T> 
 	size_t required(size_t P)

@@ -38,7 +38,7 @@ __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::
 
 	// Use PyTorch rule for clamping: if clamping was applied,
 	// gradient becomes 0.
-	// PyTorch clamping规则：符号函数sgn的导数为0
+	// PyTorch clamping rule: the derivative of the sign function sgn is 0
 	glm::vec3 dL_dRGB = dL_dcolor[idx];
 	dL_dRGB.x *= clamped[3 * idx + 0] ? 0 : 1;
 	dL_dRGB.y *= clamped[3 * idx + 1] ? 0 : 1;
@@ -55,7 +55,7 @@ __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::
 	glm::vec3* dL_dsh = dL_dshs + idx * max_coeffs;
 
 	// No tricks here, just high school-level calculus.
-	// 纯粹的3D世界坐标运算，不涉及相机的模型
+	// Pure 3D world coordinate arithmetic, no camera modeling involved
 	float dRGBdsh0 = SH_C0;
 	dL_dsh[0] = dRGBdsh0 * dL_dRGB;
 	if (deg > 0)
@@ -174,10 +174,10 @@ __global__ void computeCov2DCUDA(int P,
 	// Fetch gradients, recompute 2D covariance and relevant 
 	// intermediate forward results needed in the backward.
 	float3 mean = means[idx];
-	float3 dL_dconic = { dL_dconics[4 * idx], dL_dconics[4 * idx + 1], dL_dconics[4 * idx + 3] }; // 冗余？+2位置没用
+	float3 dL_dconic = { dL_dconics[4 * idx], dL_dconics[4 * idx + 1], dL_dconics[4 * idx + 3] }; // Redundancy? The +2 position is useless, but 4 float alignment?
 	float3 t = transformPoint4x3(mean, view_matrix);
 	
-	// t是相机坐标，在perspective下有限制，在panoramic下不应有/或只裁掉近点
+	// t is the camera coordinate, there is a limit under perspective, under panoramic there shouldn't be/or only near points cropped out
 	const float limx = 1.3f * tan_fovx;
 	const float limy = 1.3f * tan_fovy;
 	const float txtz = t.x / t.z;
@@ -188,16 +188,16 @@ __global__ void computeCov2DCUDA(int P,
 	const float x_grad_mul = txtz < -limx || txtz > limx ? 0 : 1;
 	const float y_grad_mul = tytz < -limy || tytz > limy ? 0 : 1;
 
-	// 以下所以涉及J的都涉及相机模型
-	// 注意glm是column major，输入参数每3个是一列
+	// All of the following involving J involve camera models
+	// Note that glm is column major, and input parameters are one column every three
 	glm::mat3 J = glm::mat3(h_x / t.z, 0.0f, -(h_x * t.x) / (t.z * t.z),
 		0.0f, h_y / t.z, -(h_y * t.y) / (t.z * t.z),
-		0, 0, 0); // 实际是J^T
+		0, 0, 0); // actually J^T
 
 	glm::mat3 W = glm::mat3(
 		view_matrix[0], view_matrix[4], view_matrix[8],
 		view_matrix[1], view_matrix[5], view_matrix[9],
-		view_matrix[2], view_matrix[6], view_matrix[10]); // 实际是W^T
+		view_matrix[2], view_matrix[6], view_matrix[10]); // actually W^T
 
 	glm::mat3 Vrk = glm::mat3(
 		cov3D[0], cov3D[1], cov3D[2],
@@ -209,7 +209,7 @@ __global__ void computeCov2DCUDA(int P,
 	glm::mat3 cov2D = glm::transpose(T) * glm::transpose(Vrk) * T;
 
 	// Use helper variables for 2D covariance entries. More compact.
-	// 低通滤波用直接加方差的方式实现，不产生额外梯度
+	// Low-pass filtering is implemented with direct addition of variance without generating additional gradients
 	float a = cov2D[0][0] += 0.3f;
 	float b = cov2D[0][1];
 	float c = cov2D[1][1] += 0.3f;
@@ -223,7 +223,7 @@ __global__ void computeCov2DCUDA(int P,
 		// Gradients of loss w.r.t. entries of 2D covariance matrix,
 		// given gradients of loss w.r.t. conic matrix (inverse covariance matrix).
 		// e.g., dL / da = dL / d_conic_a * d_conic_a / d_a
-		// 实际上之前renderCUDA算的dL_dconic.y是正确值的一半。这里每个都*2，最终结果正确（推测是为了dL_db能提出一个公因数2？）
+		// Actually the dL_dconic.y calculated by renderCUDA before was half the correct value. Here each is *2 and the final result is correct (presumably so that dL_db can come up with a common factor of 2)
 		dL_da = denom2inv * (-c * c * dL_dconic.x + 2 * b * c * dL_dconic.y + (denom - a * c) * dL_dconic.z);
 		dL_dc = denom2inv * (-a * a * dL_dconic.z + 2 * a * b * dL_dconic.y + (denom - a * c) * dL_dconic.x);
 		dL_db = denom2inv * 2 * (b * c * dL_dconic.x - (denom + 2 * b * b) * dL_dconic.y + a * b * dL_dconic.z);
@@ -243,7 +243,7 @@ __global__ void computeCov2DCUDA(int P,
 		dL_dcov[6 * idx + 2] = 2 * T[0][0] * T[0][2] * dL_da + (T[0][0] * T[1][2] + T[0][2] * T[1][0]) * dL_db + 2 * T[1][0] * T[1][2] * dL_dc;
 		dL_dcov[6 * idx + 4] = 2 * T[0][2] * T[0][1] * dL_da + (T[0][1] * T[1][2] + T[0][2] * T[1][1]) * dL_db + 2 * T[1][1] * T[1][2] * dL_dc;
 	}
-	else // 数值稳定性：协方差矩阵行列式超级大时梯度会消失，为了防止乘denom变成inf，直接0，不再处理
+	else // Numerical stability: the gradient disappears when the determinant of the covariance matrix is super large, in order to prevent the multiplication denom from becoming inf, it is directly 0 and no longer processed
 	{
 		for (int i = 0; i < 6; i++)
 			dL_dcov[6 * idx + i] = 0;
@@ -276,7 +276,7 @@ __global__ void computeCov2DCUDA(int P,
 	float tz3 = tz2 * tz;
 
 	// Gradients of loss w.r.t. transformed Gaussian mean t
-	// 从这里开始，涉及J的内部定义，相当于求proj函数对t的二阶导之和
+	// From here on, the internal definition of J is involved, which is equivalent to finding the sum of the second-order derivatives of the proj function with respect to t
 	float dL_dtx = x_grad_mul * -h_x * tz2 * dL_dJ02;
 	float dL_dty = y_grad_mul * -h_y * tz2 * dL_dJ12;
 	float dL_dtz = -h_x * tz2 * dL_dJ00 - h_y * tz2 * dL_dJ11 + (2 * h_x * t.x) * tz3 * dL_dJ02 + (2 * h_y * t.y) * tz3 * dL_dJ12;
@@ -316,10 +316,10 @@ __global__ void computeCov2DLonLatCUDA(int P,
 	// Fetch gradients, recompute 2D covariance and relevant 
 	// intermediate forward results needed in the backward.
 	float3 mean = means[idx];
-	float3 dL_dconic = { dL_dconics[4 * idx], dL_dconics[4 * idx + 1], dL_dconics[4 * idx + 3] }; // 冗余？+2位置没用
+	float3 dL_dconic = { dL_dconics[4 * idx], dL_dconics[4 * idx + 1], dL_dconics[4 * idx + 3] };
 	float3 t = transformPoint4x3(mean, view_matrix);
 	
-	// 【相机模型】t是相机坐标，在perspective下有限制，在panoramic下不应有/或只裁掉近点
+	// [Camera model] t is the camera coordinate, there is a limitation in perspective, in panoramic there should not be/or only crop off the near point.
 	// const float limx = 1.3f * tan_fovx;
 	// const float limy = 1.3f * tan_fovy;
 	// const float txtz = t.x / t.z;
@@ -330,8 +330,8 @@ __global__ void computeCov2DLonLatCUDA(int P,
 	// const float x_grad_mul = txtz < -limx || txtz > limx ? 0 : 1;
 	// const float y_grad_mul = tytz < -limy || tytz > limy ? 0 : 1;
 
-	// 【相机模型】以下所以涉及J的都涉及相机模型
-	// 注意glm是column major，输入参数每3个是一列
+	// [Camera Model] All of the following involving J involves a camera model.
+	// Note that glm is column major, and input parameters are one column every three
 	float txtx = t.x * t.x;
 	float tyty = t.y * t.y;
 	float tztz = t.z * t.z;
@@ -370,12 +370,12 @@ __global__ void computeCov2DLonLatCUDA(int P,
 	glm::mat3 J = glm::mat3(
 		dpx_dtx, 0.0f, dpx_dtz,
 		dpy_dtx, dpy_dty, dpy_dtz,
-		0.0f, 0.0f, 0.0f); // 实际是J^T
+		0.0f, 0.0f, 0.0f); // actually J^T
 
 	glm::mat3 W = glm::mat3(
 		view_matrix[0], view_matrix[4], view_matrix[8],
 		view_matrix[1], view_matrix[5], view_matrix[9],
-		view_matrix[2], view_matrix[6], view_matrix[10]); // 实际是W^T
+		view_matrix[2], view_matrix[6], view_matrix[10]); // actually W^T
 
 	glm::mat3 Vrk = glm::mat3(
 		cov3D[0], cov3D[1], cov3D[2],
@@ -387,7 +387,7 @@ __global__ void computeCov2DLonLatCUDA(int P,
 	glm::mat3 cov2D = glm::transpose(T) * glm::transpose(Vrk) * T;
 
 	// Use helper variables for 2D covariance entries. More compact.
-	// 低通滤波用直接加方差的方式实现，不产生额外梯度
+	// Low-pass filtering is implemented with direct addition of variance without generating additional gradients
 	float a = cov2D[0][0] += 0.3f;
 	float b = cov2D[0][1];
 	float c = cov2D[1][1] += 0.3f;
@@ -401,7 +401,7 @@ __global__ void computeCov2DLonLatCUDA(int P,
 		// Gradients of loss w.r.t. entries of 2D covariance matrix,
 		// given gradients of loss w.r.t. conic matrix (inverse covariance matrix).
 		// e.g., dL / da = dL / d_conic_a * d_conic_a / d_a
-		// 实际上之前renderCUDA算的dL_dconic.y是正确值的一半。这里每个都*2，最终结果正确（推测是为了dL_db能提出一个公因数2？）
+		// Actually the dL_dconic.y calculated by renderCUDA before was half the correct value. Here each is *2 and the final result is correct (presumably so that dL_db can come up with a common factor of 2)
 		dL_da = denom2inv * (-c * c * dL_dconic.x + 2 * b * c * dL_dconic.y + (denom - a * c) * dL_dconic.z);
 		dL_dc = denom2inv * (-a * a * dL_dconic.z + 2 * a * b * dL_dconic.y + (denom - a * c) * dL_dconic.x);
 		dL_db = denom2inv * 2 * (b * c * dL_dconic.x - (denom + 2 * b * b) * dL_dconic.y + a * b * dL_dconic.z);
@@ -421,7 +421,7 @@ __global__ void computeCov2DLonLatCUDA(int P,
 		dL_dcov[6 * idx + 2] = 2 * T[0][0] * T[0][2] * dL_da + (T[0][0] * T[1][2] + T[0][2] * T[1][0]) * dL_db + 2 * T[1][0] * T[1][2] * dL_dc;
 		dL_dcov[6 * idx + 4] = 2 * T[0][2] * T[0][1] * dL_da + (T[0][1] * T[1][2] + T[0][2] * T[1][1]) * dL_db + 2 * T[1][1] * T[1][2] * dL_dc;
 	}
-	else // 数值稳定性：协方差矩阵行列式超级大时梯度会消失，为了防止乘denom变成inf，直接0，不再处理
+	else // Numerical stability: the gradient disappears when the determinant of the covariance matrix is super large, in order to prevent the multiplication denom from becoming inf, it is directly 0 and no longer processed
 	{
 		for (int i = 0; i < 6; i++)
 			dL_dcov[6 * idx + i] = 0;
@@ -451,7 +451,7 @@ __global__ void computeCov2DLonLatCUDA(int P,
 	float dL_dJ12 = W[2][0] * dL_dT10 + W[2][1] * dL_dT11 + W[2][2] * dL_dT12;
 
 	// Gradients of loss w.r.t. transformed Gaussian mean t
-	// 【相机模型】从这里开始，涉及J的内部定义，相当于求proj函数对t的二阶导之和
+	// [Camera model] From here, the internal definition of J is involved, which is equivalent to finding the sum of the second-order derivatives of the proj function with respect to t
 	float temp1 = H_div_pi * tyty_minus_trxztrxz * trxz_trtrtrtr_inv;
 	float temp2 = H_div_pi * txtytz * (trtr + 2.0f * trxztrxz) * trxztrxztrxz_trtrtrtr_inv;
 	float temp3 = W_div_2pi * (txtx - tztz) * trxztrxztrxztrxz_inv;
@@ -578,15 +578,15 @@ __global__ void preprocessCUDA(
 	if (idx >= P || !(radii[idx] > 0))
 		return;
 
-	float3 m = means[idx]; // 世界坐标
+	float3 m = means[idx]; // world coordinate
 
 	// Taking care of gradients from the screenspace points
-	float4 m_hom = transformPoint4x4(m, proj); // screen-space坐标，即means2D
+	float4 m_hom = transformPoint4x4(m, proj); // screen-space coordinates, i.e., means2D
 	float m_w = 1.0f / (m_hom.w + 0.0000001f);
 
 	// Compute loss gradient w.r.t. 3D means due to gradients of 2D means
 	// from rendering procedure
-	// 之前computeCov2DCUDA计算的是通过cov传导的间接3D-2D梯度分量，现在计算的是3D-2D直接坐标变换导致的3D-2D梯度分量
+	// Previously computeCov2DCUDA computed indirect 3D-2D gradient components conducted through cov, now it computes 3D-2D gradient components due to 3D-2D direct coordinate transformations
 	glm::vec3 dL_dmean;
 	float mul1 = (proj[0] * m.x + proj[4] * m.y + proj[8] * m.z + proj[12]) * m_w * m_w;
 	float mul2 = (proj[1] * m.x + proj[5] * m.y + proj[9] * m.z + proj[13]) * m_w * m_w;
@@ -637,7 +637,7 @@ __global__ void preprocessLonLatCUDA(
 	if (idx >= P || !(radii[idx] > 0))
 		return;
 
-	float3 m = means[idx]; // 世界坐标
+	float3 m = means[idx]; // world coordinate
 
 	// Taking care of gradients from the screenspace points
 	float dsx_dpx = 2.0f / (float)width;
@@ -648,7 +648,7 @@ __global__ void preprocessLonLatCUDA(
 
 	// Compute loss gradient w.r.t. 3D means due to gradients of 2D means
 	// from rendering procedure
-	// 【相机模型】之前computeCov2DCUDA计算的是通过cov传导的间接3D-2D梯度分量，现在计算的是3D-2D直接坐标变换导致的3D-2D梯度分量
+	// [Camera model] Previously computeCov2DCUDA calculated indirect 3D-2D gradient components conducted through cov, now it calculates 3D-2D gradient components due to 3D-2D direct coordinate transformation
 	float dL_dtx = dL_dpx * dpx_dt[idx].x + dL_dpy * dpy_dt[idx].x;
 	float dL_dty = dL_dpx * dpx_dt[idx].y + dL_dpy * dpy_dt[idx].y;
 	float dL_dtz = dL_dpx * dpx_dt[idx].z + dL_dpy * dpy_dt[idx].z;
@@ -681,14 +681,14 @@ renderCUDA(
 	const float* __restrict__ colors,
 	const float* __restrict__ final_Ts,
 	const uint32_t* __restrict__ n_contrib,
-	const float* __restrict__ dL_dpixels, // grad_outputs[0]，即d{loss}_d{forward输出}[0]，由torch自动计算，backward定义的是d{forward输出}_d{forward输入}
+	const float* __restrict__ dL_dpixels, // grad_outputs[0], i.e., d{loss}_d{forward output}[0], is computed automatically by torch, and backward is defined as d{forward output}_d{forward input}
 	float3* __restrict__ dL_dmean2D,
 	float4* __restrict__ dL_dconic2D,
 	float* __restrict__ dL_dopacity,
 	float* __restrict__ dL_dcolors)
 {
 	// We rasterize again. Compute necessary block info.
-	// 光栅化得到当前线程像素坐标，和forward render完全一样
+	// Rasterize to get the current thread pixel coordinates, exactly the same as forward rendering.
 	auto block = cg::this_thread_block();
 	const uint32_t horizontal_blocks = (W + BLOCK_X - 1) / BLOCK_X;
 	const uint2 pix_min = { block.group_index().x * BLOCK_X, block.group_index().y * BLOCK_Y };
@@ -697,7 +697,7 @@ renderCUDA(
 	const uint32_t pix_id = W * pix.y + pix.x;
 	const float2 pixf = { (float)pix.x, (float)pix.y };
 
-	// 是否在图像内 inside、涉及instance的序号 range、完成标识 done、未用instance数 toDo、共享数据（除了最后一项）同forward
+	// Whether inside the image inside, serial number of the involved instance range, completion mark done, number of unused instances toDo, shared data (except for the last item) same as forward
 	const bool inside = pix.x < W&& pix.y < H;
 	const uint2 range = ranges[block.group_index().y * horizontal_blocks + block.group_index().x];
 
@@ -709,23 +709,23 @@ renderCUDA(
 	__shared__ int collected_id[BLOCK_SIZE];
 	__shared__ float2 collected_xy[BLOCK_SIZE];
 	__shared__ float4 collected_conic_opacity[BLOCK_SIZE];
-	__shared__ float collected_colors[C * BLOCK_SIZE]; // 3D Gaus点的颜色，forward中一个通道只用一下没必要提前取，而这里每个通道的颜色c有多个用途所以先取了
+	__shared__ float collected_colors[C * BLOCK_SIZE]; // 3D Gaus point color, forward one channel is only used once so there is no need to take in advance, but here the color of each channel c has more than one use, so take in advance
 
 	// In the forward, we stored the final value for T, the
 	// product of all (1 - alpha) factors. 
-	// 在forward中T从前往后累乘，这里要一层层除回去
+	// In the forward T is multiplied from front to back, here it is divided back one layer at a time.
 	const float T_final = inside ? final_Ts[pix_id] : 0;
 	float T = T_final;
 
 	// We start from the back. The ID of the last contributing
 	// Gaussian is known from each pixel from the forward.
-	// 在forward中已记录了每个像素参与累积alpha的最后一个instance是这个像素所有instance中的第几个
+	// It has been recorded in the forward that the rank of the last instance of each pixel participating in the cumulative alpha
 	uint32_t contributor = toDo;
 	const int last_contributor = inside ? n_contrib[pix_id] : 0;
 
 	float accum_rec[C] = { 0 }; // 
 	float dL_dpixel[C];
-	if (inside) // 取得d{loss}_d{forward输出}，即所有梯度的前半部分因子
+	if (inside) // Obtain d{loss}_d{forward output}, i.e., the first half factor of all gradients
 		for (int i = 0; i < C; i++)
 			dL_dpixel[i] = dL_dpixels[i * H * W + pix_id];
 
@@ -734,8 +734,8 @@ renderCUDA(
 
 	// Gradient of pixel coordinate w.r.t. normalized 
 	// screen-space viewport corrdinates (-1 to 1)
-	// 【相机模型】像素坐标delx,dely = screen-space坐标x,y * W,H / 2
-	// 注意外界传入的means2D并没有用，forward所用points_xy_image是rasterizer内部根据full projection matrix计算的screen-space的坐标
+	// Camera model] Pixel coordinates delx,dely = screen-space coordinates x,y * W,H / 2
+	// Note that the external incoming means2D is not used, the points_xy_image used by forward are the coordinates of the screen-space calculated internally by the rasterizer based on the full projection matrix
 	const float ddelx_dx = 0.5 * W;
 	const float ddely_dy = 0.5 * H;
 
@@ -744,17 +744,17 @@ renderCUDA(
 	{
 		// Load auxiliary data into shared memory, start in the BACK
 		// and load them in revers order.
-		// 一轮中，即对同一个i，整个block共同并行取出最多BLOCK_SIZE个instance，block内每个thread取1个，同步：等到这些instance都取好
+		// In one round, i.e., for the same i, the whole block takes out up to BLOCK_SIZE instances in parallel, 1 for each thread in the block, synchronization: wait until all these instances are taken.
 		block.sync();
 		const int progress = i * BLOCK_SIZE + block.thread_rank();
 		if (range.x + progress < range.y)
 		{
-			const int coll_id = point_list[range.y - progress - 1]; // 同一个tile的range内，读取顺序和forward是相反的
-			collected_id[block.thread_rank()] = coll_id; // instance对应的Gaus的id
-			collected_xy[block.thread_rank()] = points_xy_image[coll_id]; // instance对应的Gaus的像素坐标
-			collected_conic_opacity[block.thread_rank()] = conic_opacity[coll_id]; // instance对应的Gaus的协方差、透明度
+			const int coll_id = point_list[range.y - progress - 1]; // Within a range of the same tile, the read order is reversed from forward
+			collected_id[block.thread_rank()] = coll_id; // The id of the Gaus corresponding to instance
+			collected_xy[block.thread_rank()] = points_xy_image[coll_id]; // The pixel coordinates of the instance's corresponding Gaus
+			collected_conic_opacity[block.thread_rank()] = conic_opacity[coll_id]; // instance corresponds to the covariance of Gaus, opacity
 			for (int i = 0; i < C; i++)
-				collected_colors[i * BLOCK_SIZE + block.thread_rank()] = colors[coll_id * C + i]; // instance对应的Gaus的3D空间颜色
+				collected_colors[i * BLOCK_SIZE + block.thread_rank()] = colors[coll_id * C + i]; // instance corresponds to the 3D spatial color of the Gaus
 		}
 		block.sync();
 
@@ -764,11 +764,11 @@ renderCUDA(
 			// Keep track of current Gaussian ID. Skip, if this one
 			// is behind the last contributor for this pixel.
 			contributor--;
-			if (contributor >= last_contributor) // 该instance在记录的最后一个参与贡献当前像素的instance之后，则跳过
+			if (contributor >= last_contributor) // This instance is skipped after the last instance in the record that participates in contributing the current pixel
 				continue;
 
 			// Compute blending values, as before.
-			// 为了计算导数值，把渲染混合所用的函数值再算一遍
+			// In order to calculate the derivative values, take the function values used for rendering the blend and calculate them again
 			const float2 xy = collected_xy[j];
 			const float2 d = { xy.x - pixf.x, xy.y - pixf.y };
 			const float4 con_o = collected_conic_opacity[j]; // {x=conic[0][0], y=conic[0][1], z=conic[1][1], w=opacity}
@@ -776,21 +776,21 @@ renderCUDA(
 			if (power > 0.0f)
 				continue;
 
-			const float G = exp(power); // 高斯分布的值单独记录为G
-			const float alpha = min(0.99f, con_o.w * G); // 数值稳健性1：防除以0，大alpha clamp到0.99
-			if (alpha < 1.0f / 255.0f) // 数值稳健性2：防除以0，跳过小alpha
+			const float G = exp(power); // The values of the Gaussian distribution are recorded separately as G
+			const float alpha = min(0.99f, con_o.w * G); // Numerical Robustness 1: preventing division by 0, large alpha clamp to 0.99
+			if (alpha < 1.0f / 255.0f) // Numerical robustness 2: preventing division by 0, skipping small alpha
 				continue;
 
 			T = T / (1.f - alpha);
-			const float dchannel_dcolor = alpha * T; // 论文式(3)第i项的导数（dC_dci）
+			const float dchannel_dcolor = alpha * T; // The derivative of the ith term of the paper equation (3) (dC_dci)
 
 			// Propagate gradients to per-Gaussian colors and keep
 			// gradients w.r.t. alpha (blending factor for a Gaussian/pixel
 			// pair).
-			// 求对color的梯度，顺便求中间变量：对alpha的梯度
+			// Find the gradient over color, and by the way, the intermediate variable: the gradient over alpha
 			float dL_dalpha = 0.0f;
 			const int global_id = collected_id[j];
-			for (int ch = 0; ch < C; ch++) // rgb每个channel的梯度单独计算
+			for (int ch = 0; ch < C; ch++) // The gradient of each channel of rgb is calculated separately
 			{
 				const float c = collected_colors[ch * BLOCK_SIZE + j];
 				// Update last color (to be used in the next iteration)
@@ -810,7 +810,7 @@ renderCUDA(
 
 			// Account for fact that alpha also influences how much of
 			// the background color is added if nothing left to blend
-			// 背景项见forward.cu renderCUDA()最后一个if括号内
+			// See forward.cu renderCUDA() in the last if bracket for background items
 			float bg_dot_dpixel = 0;
 			for (int i = 0; i < C; i++)
 				bg_dot_dpixel += bg_color[i] * dL_dpixel[i];
@@ -825,18 +825,18 @@ renderCUDA(
 			const float dG_ddely = -gdy * con_o.z - gdx * con_o.y;
 
 			// Update gradients w.r.t. 2D mean position of the Gaussian
-			// loss对2D screen-space坐标的导数，用于addDensificationStats，不是直接更新mean2D
+			// Derivative of loss with respect to 2D screen-space coordinates for addDensificationStats, not a direct update of mean2D
 			atomicAdd(&dL_dmean2D[global_id].x, dL_dG * dG_ddelx * ddelx_dx);
 			atomicAdd(&dL_dmean2D[global_id].y, dL_dG * dG_ddely * ddely_dy);
 
 			// Update gradients w.r.t. 2D covariance (2x2 matrix, symmetric)
-			// loss对2D协方差的导数
+			// The derivative of loss with respect to the 2D covariance
 			atomicAdd(&dL_dconic2D[global_id].x, -0.5f * gdx * d.x * dL_dG);
-			atomicAdd(&dL_dconic2D[global_id].y, -0.5f * gdx * d.y * dL_dG); // 本来这里应该没有0.5，但后面乘2又乘回来了
-			atomicAdd(&dL_dconic2D[global_id].w, -0.5f * gdy * d.y * dL_dG); // TODO: 命名错误，应该是z？
+			atomicAdd(&dL_dconic2D[global_id].y, -0.5f * gdx * d.y * dL_dG); // There shouldn't have been 0.5 here, but multiplying by 2 later multiplies it back again
+			atomicAdd(&dL_dconic2D[global_id].w, -0.5f * gdy * d.y * dL_dG); // TODO: wrong name, should be z?
 
 			// Update gradients w.r.t. opacity of the Gaussian
-			// loss对opacity的导数
+			// Derivative of loss with respect to opacity
 			atomicAdd(&(dL_dopacity[global_id]), G * dL_dalpha);
 		}
 	}
@@ -870,7 +870,7 @@ void BACKWARD::preprocess(
 	// Somewhat long, thus it is its own kernel rather than being part of 
 	// "preprocess". When done, loss gradient w.r.t. 3D means has been
 	// modified and gradient w.r.t. 3D covariance matrix has been computed.	
-	// 计算3D cov到screen-space 2D cov的导数，即dconic_dcov3D，从而计算dL_dcov3D，同时顺便计算dL_dmean3D的一部分
+	// Calculate the derivative of the 3D cov to the screen-space 2D cov, i.e., dconic_dcov3D, and thus dL_dcov3D, and incidentally a portion of dL_dmean3D
 	computeCov2DCUDA << <(P + 255) / 256, 256 >> > (
 		P,
 		means3D,
@@ -888,8 +888,8 @@ void BACKWARD::preprocess(
 	// Propagate gradients for remaining steps: finish 3D mean gradients,
 	// propagate color gradients to SH (if desireD), propagate 3D covariance
 	// matrix gradients to scale and rotation.
-	// 计算dmean2D_dmean3D，利用之前计算的dL_dmean2D，计算dL_dmean3D的第二部分
-	// 若存在相应转换，计算SH转RGB的梯度（color的最终梯度）和dL_dmean3D的第三部分（至此得到xyz的最终梯度）、rot+scale转cov的梯度（rot、scale的最终梯度）
+	// Calculate dmean2D_dmean3D, using the previously calculated dL_dmean2D, calculate the second part of dL_dmean3D
+	// If the corresponding transformation exists, compute the gradient of SH to RGB (final gradient of color) and the third part of dL_dmean3D (up to this point you get the final gradient of xyz), the gradient of rot+scale to cov (final gradient of rot, scale)
 	preprocessCUDA<NUM_CHANNELS> << < (P + 255) / 256, 256 >> > (
 		P, D, M,
 		(float3*)means3D,
@@ -973,7 +973,7 @@ void BACKWARD::preprocessLonlat(
 	// Somewhat long, thus it is its own kernel rather than being part of 
 	// "preprocess". When done, loss gradient w.r.t. 3D means has been
 	// modified and gradient w.r.t. 3D covariance matrix has been computed.	
-	// 【相机模型】计算3D cov到screen-space 2D cov的导数，即dconic_dcov3D，从而计算dL_dcov3D，同时顺便计算dL_dmean3D的一部分
+	// [Camera model] Calculate the derivative of 3D cov to screen-space 2D cov, i.e., dconic_dcov3D, and thus dL_dcov3D, with a portion of dL_dmean3D in the meantime.
 	computeCov2DLonLatCUDA << <(P + 255) / 256, 256 >> > (
 		P,
 		means3D,
@@ -990,8 +990,8 @@ void BACKWARD::preprocessLonlat(
 	// Propagate gradients for remaining steps: finish 3D mean gradients,
 	// propagate color gradients to SH (if desireD), propagate 3D covariance
 	// matrix gradients to scale and rotation.
-	// 【相机模型】计算dmean2D_dmean3D，利用之前计算的dL_dmean2D，计算dL_dmean3D的第二部分
-	// 若存在相应转换，计算SH转RGB的梯度（color的最终梯度）和dL_dmean3D的第三部分（至此得到xyz的最终梯度）、rot+scale转cov的梯度（rot、scale的最终梯度）
+	// [Camera model] compute dmean2D_dmean3D, using the previously computed dL_dmean2D, compute the second part of dL_dmean3D
+	// If the corresponding transformation exists, compute the gradient of SH to RGB (final gradient of color) and the third part of dL_dmean3D (to this point you get the final gradient of xyz), the gradient of rot+scale to cov (final gradient of rot, scale)
 	preprocessLonLatCUDA<NUM_CHANNELS> << < (P + 255) / 256, 256 >> > (
 		P, D, M,
 		W, H,
