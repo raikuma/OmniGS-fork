@@ -265,9 +265,6 @@ void GaussianMapper::trainSfmPcd()
         // Invoke training once
         trainForOneIteration();
 
-        if (getIteration() % 1000 == 0)
-            std::cout << "[Gaussian Mapper]Iteration " << getIteration() << std::endl;
-
         if (getIteration() >= opt_params_.iterations_)
             break;
     }
@@ -303,6 +300,7 @@ void GaussianMapper::trainForOneIteration()
     // Pick a random Camera
     std::shared_ptr<GaussianKeyframe> viewpoint_cam = useOneRandomSlidingWindowKeyframe();
     if (!viewpoint_cam) {
+        std::cout << "Cannot find a valid keyframe for training." << std::endl;
         increaseIteration(-1);
         return;
     }

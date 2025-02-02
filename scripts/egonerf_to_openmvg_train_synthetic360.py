@@ -62,7 +62,7 @@ for scene in scene_list:
         is_pose_line = True
         for line in frames_fin:
             if line.strip() and line[0] != "#":
-                if is_pose_line:
+                if is_pose_line or True:
                     is_pose_line = False
                     line_content = line.split(" ")
                     image_filename = line_content[9]
