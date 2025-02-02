@@ -27,6 +27,7 @@
 #include <Eigen/Geometry>
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgproc/types_c.h>
+#include <numpy/ndarrayobject.h>
 
 #include "third_party/colmap/utils/endian.h"
 #include "third_party/tinyply/tinyply.h"
@@ -180,8 +181,9 @@ void readViewsOpenMVG(
             pkf->computeTransformTensors();
             // Image
             std::filesystem::path image_path = image_dir / pkf->img_filename_;
-            // cv::Mat image = cv::imread(image_path.string(), cv::IMREAD_COLOR);
-            cv::Mat image = cv::imread(image_path.string(), cv::IMREAD_UNCHANGED);
+            std::ifstream img_stream(image_path.string(), std::ios::binary);
+            std::vector<uchar> img_data((std::istreambuf_iterator<char>(img_stream)), std::istreambuf_iterator<char>());
+            cv::Mat image = cv::imdecode(img_data, cv::IMREAD_COLOR);
             cv::cvtColor(image, image, CV_BGR2RGB);
             image.convertTo(image, CV_32FC3, 1.0f / 255.0f);
             cv::Mat imgRGB_undistorted;
