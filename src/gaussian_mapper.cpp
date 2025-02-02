@@ -220,6 +220,7 @@ void GaussianMapper::readConfigFromFile(std::filesystem::path cfg_path)
 void GaussianMapper::trainSfmPcd()
 {
     // Prepare multi resolution images for training
+    cout << "[Gaussian Mapper]Preparing multi-resolution images for training..." << endl;
     for (auto& kfit : scene_->keyframes()) {
         auto pkf = kfit.second;
         increaseKeyframeTimesOfUse(pkf, newKeyframeTimesOfUse());
@@ -248,6 +249,7 @@ void GaussianMapper::trainSfmPcd()
     }
 
     // Prepare for training
+    cout << "[Gaussian Mapper]Preparing for training..." << endl;
     {
         std::unique_lock<std::mutex> lock_render(mutex_render_);
         scene_->cameras_extent_ = std::get<1>(scene_->getNerfppNorm());
@@ -258,6 +260,7 @@ void GaussianMapper::trainSfmPcd()
     }
 
     // Main loop: gaussian splatting training
+    cout << "[Gaussian Mapper]Start training..." << endl;
     while (!isStopped()) {
         // Invoke training once
         trainForOneIteration();
@@ -267,6 +270,7 @@ void GaussianMapper::trainSfmPcd()
     }
 
     // Tail gaussian optimization
+    cout << "[Gaussian Mapper]Tail gaussian optimization..." << endl;
     int densify_interval = densifyInterval();
     int n_delay_iters = densify_interval * 0.8;
     while (getIteration() % densify_interval <= n_delay_iters || isKeepingTraining()) {
@@ -276,6 +280,7 @@ void GaussianMapper::trainSfmPcd()
     }
 
     // Save and clear
+    cout << "[Gaussian Mapper]Saving and clearing..." << endl;
     renderAndRecordAllKeyframes("_shutdown");
     savePly(result_dir_ / (std::to_string(getIteration()) + "_shutdown") / "ply");
     writeKeyframeUsedTimes(result_dir_ / "used_times", "final");

@@ -2,7 +2,7 @@ import os
 import subprocess
 
 # synthetic360
-dataset_dir = "./data/synthetic360"
+dataset_dir = "../data/synthetic360"
 scene_list_path = "./egonerf_scene_list_synthetic360.txt"
 exp_loops = [10]
 test_iters = [8000, 32000]
