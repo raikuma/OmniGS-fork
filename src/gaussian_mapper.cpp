@@ -265,6 +265,9 @@ void GaussianMapper::trainSfmPcd()
         // Invoke training once
         trainForOneIteration();
 
+        if (getIteration() % 1000 == 0)
+            std::cout << "[Gaussian Mapper]Iteration " << getIteration() << std::endl;
+
         if (getIteration() >= opt_params_.iterations_)
             break;
     }
