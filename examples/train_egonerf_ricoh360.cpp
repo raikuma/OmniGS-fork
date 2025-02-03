@@ -185,6 +185,10 @@ void readViewsOpenMVG(
                 std::cerr << "Error: Cannot open or read the image file: " << image_path.string() << std::endl;
                 return;
             }
+            else
+            {
+                std::cout << "Image: " << image_path.string() << std::endl;
+            }
             cv::cvtColor(image, image, CV_BGR2RGB);
             image.convertTo(image, CV_32FC3, 1.0f / 255.0f);
             cv::Mat imgRGB_undistorted;
