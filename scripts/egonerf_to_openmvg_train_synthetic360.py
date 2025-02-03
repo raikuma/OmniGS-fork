@@ -65,7 +65,7 @@ for scene in scene_list:
                 if is_pose_line or True:
                     is_pose_line = False
                     line_content = line.split(" ")
-                    image_filename = line_content[9]
+                    image_filename = line_content[9].strip()
                     image_id = os.path.splitext(image_filename)[0]
                     if not image_id in train_indices:
                         continue
