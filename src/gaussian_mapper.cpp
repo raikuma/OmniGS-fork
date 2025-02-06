@@ -628,13 +628,13 @@ void GaussianMapper::recordKeyframeRendered(
         std::filesystem::path result_loss_dir,
         std::string name_suffix)
 {
-    auto image_cv = tensor_utils::torchTensor2CvMat_Float32(rendered);
-    if (record_rendered_image_) {
+    if (record_rendered_image_ || true) {
+        auto image_cv = tensor_utils::torchTensor2CvMat_Float32(rendered);
         cv::cvtColor(image_cv, image_cv, CV_RGB2BGR);
         image_cv.convertTo(image_cv, CV_8UC3, 255.0f);
         cv::imwrite(result_img_dir / (std::to_string(getIteration()) + "_" + std::to_string(kfid) + name_suffix + ".jpg"), image_cv);
+        cv::imwrite(result_img_dir / (std::to_string(getIteration()) + "_" + std::to_string(kfid) + name_suffix + ".png"), image_cv);
     }
-    cv::imwrite(result_img_dir / (std::to_string(getIteration()) + "_" + std::to_string(kfid) + name_suffix + ".png"), image_cv);
 
     if (record_ground_truth_image_) {
         auto gt_image_cv = tensor_utils::torchTensor2CvMat_Float32(ground_truth);
