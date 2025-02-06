@@ -633,6 +633,7 @@ void GaussianMapper::recordKeyframeRendered(
         cv::cvtColor(image_cv, image_cv, CV_RGB2BGR);
         image_cv.convertTo(image_cv, CV_8UC3, 255.0f);
         cv::imwrite(result_img_dir / (std::to_string(getIteration()) + "_" + std::to_string(kfid) + name_suffix + ".jpg"), image_cv);
+        std::cout << "Recorded rendered image: " << result_img_dir / (std::to_string(getIteration()) + "_" + std::to_string(kfid) + name_suffix + ".png") << std::endl;
         cv::imwrite(result_img_dir / (std::to_string(getIteration()) + "_" + std::to_string(kfid) + name_suffix + ".png"), image_cv);
     }
 
