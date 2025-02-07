@@ -67,9 +67,9 @@ for scene in scene_list:
                     line_content = line.split(" ")
                     image_filename = line_content[9].strip()
                     image_id = os.path.splitext(image_filename)[0]
-                    image_filename = f"{int(image_id):03d}.png"
-                    if not image_id in train_indices:
-                        continue
+                    # image_filename = f"{int(image_id):03d}.png"
+                    # if not image_id in train_indices:
+                    #     continue
                     qw = float(line_content[1])
                     qx = float(line_content[2])
                     qy = float(line_content[3])
