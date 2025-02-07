@@ -1,7 +1,7 @@
 import os
 import subprocess
 
-dataset_dir = "/home/rapidlab/dataset/omnidirectional/360Roam_1_4"
+dataset_dir = "../data/360Roam_dataset"
 scene_list_path = "./360roam_scene_list.txt"
 exp_loops = [10]
 test_iters = [8000, 32000]
