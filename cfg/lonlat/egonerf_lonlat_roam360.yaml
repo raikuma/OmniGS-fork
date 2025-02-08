@@ -75,7 +75,7 @@ Optimization.densify_grad_threshold: 0.0002
 Optimization.prune_by_extent: 0 # 0:false, 1 or other integer:true
 
 # Image ROI
-Optimization.skip_bottom_ratio: 0.0
+Optimization.skip_bottom_ratio: 0.063
 
 #--------------------------------------------------------------------------------------------
 # Viewer Parameters
