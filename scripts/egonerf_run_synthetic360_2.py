@@ -8,7 +8,7 @@ exp_loops = [10]
 test_iters = [8000, 32000]
 
 training_cfg_path = "../cfg/lonlat/egonerf_lonlat_synthetic360.yaml"
-result_root = "../results/lonlat/EgoNeRF/synthetic360"
+result_root = "../results/lonlat/EgoNeRF/synthetic360_2"
 
 scene_list = []
 with open(scene_list_path, 'r') as fin:

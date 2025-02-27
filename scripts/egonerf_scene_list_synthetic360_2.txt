@@ -1,1 +1,9 @@
+archiviz-flat
+barbershop
+classroom
+fisher-hut
 lone_monk
+LOU
+pavilion-midday-chair
+pavilion-midday-pond
+restroom
